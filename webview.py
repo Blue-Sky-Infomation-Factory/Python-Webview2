@@ -27,29 +27,29 @@ class WebViewException(Exception):
 
 class WebViewConfiguration:
 	def __init__(self,
-			dataFolder: str = os.getenv('TEMP') + '/Microsoft WebView', # WebView 数据文件夹 # type: ignore
-			privateMode = True, # 隐私模式
-			debugEnabled = False, # 启用调试特性
-			userAgent:Optional[str] = None, # 用户代理标识
+			data_folder: str = os.getenv('TEMP') + '/Microsoft WebView', # WebView 数据文件夹 # type: ignore
+			private_mode = True, # 隐私模式
+			debug_enabled = False, # 启用调试特性
+			user_agent:Optional[str] = None, # 用户代理标识
 			api: object = None, # 向 WebView 暴露的 API 对象
-			webApiPermissionPypass: bool = False, # 自动允许 Web API 的权限请求
-			vHostPath: Optional[str] = None, # vHost 映射的文件夹路径
-			vHostName: str = "webview", # vHost 的域名
-			vHostCORS: bool = True, # 是否允许 vHost 访问外部资源
-			minSize: Tuple[int, int] = (384, 256), # 窗口显示区最小尺寸
-			maxSize: Optional[Tuple[int, int]] = None # 窗口显示区最大尺寸
+			web_api_permission_bypass: bool = False, # 自动允许 Web API 的权限请求
+			vhost_path: Optional[str] = None, # vHost 映射的文件夹路径
+			vhost_name: str = "webview", # vHost 的域名
+			vhost_cors: bool = True, # 是否允许 vHost 访问外部资源
+			min_size: Tuple[int, int] = (384, 256), # 窗口显示区最小尺寸
+			max_size: Optional[Tuple[int, int]] = None # 窗口显示区最大尺寸
 		):
-		self.dataFolder = dataFolder
-		self.privateMode = privateMode
-		self.debugEnabled = debugEnabled
-		self.userAgent = userAgent
+		self.data_folder = data_folder
+		self.private_mode = private_mode
+		self.debug_enabled = debug_enabled
+		self.user_agent = user_agent
 		self.api = api
-		self.webApiPermissionPypass = webApiPermissionPypass
-		self.vHostPath = vHostPath
-		self.vHostName = vHostName
-		self.vHostCORS = vHostCORS
-		self.minSize = minSize
-		self.maxSize = maxSize
+		self.web_api_permission_bypass = web_api_permission_bypass
+		self.vhost_path = vhost_path
+		self.vhost_name = vhost_name
+		self.vhost_cors = vhost_cors
+		self.min_size = min_size
+		self.max_size = max_size
 
 class WebViewApplication:
 	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = 'WebView Application'):
@@ -58,48 +58,48 @@ class WebViewApplication:
 		self.__title = title
 		self.__root: Optional[Tk] = None
 		self.__frame: Optional[Frame] = None
-		self.__webView: Optional[WebView2] = None
-		self.__webViewHwnd: Optional[int] = None
-		self.__navigateUri = ""
+		self.__webview: Optional[WebView2] = None
+		self.__webview_hwnd: Optional[int] = None
+		self.__navigate_uri = ""
 		self.__startParam = None
 
-	def __resizeWebView(self, _ = None):
-		assert self.__root and self.__frame and self.__webViewHwnd
+	def __resize_webview(self, _ = None):
+		assert self.__root and self.__frame and self.__webview_hwnd
 		frame = self.__frame
-		MoveWindow(self.__webViewHwnd, 0,0, frame.winfo_width(), frame.winfo_height(), False)
+		MoveWindow(self.__webview_hwnd, 0,0, frame.winfo_width(), frame.winfo_height(), False)
 
 	def __run(self):
 		configuration = self.__configuration
 		root = self.__root = Tk()
 		root.title(self.__title)
-		root.minsize(*configuration.minSize)
-		if configuration.maxSize: root.maxsize(*configuration.maxSize)
+		root.minsize(*configuration.min_size)
+		if configuration.max_size: root.maxsize(*configuration.max_size)
 		
 		frame = self.__frame = Frame(root)
 		frame.pack(fill="both",expand=True)
-		frameId = frame.winfo_id()
-		webView = self.__webView = WebView2()
-		webViewProperties = CoreWebView2CreationProperties()
-		webViewProperties.UserDataFolder = configuration.dataFolder
-		webViewProperties.set_IsInPrivateModeEnabled(configuration.privateMode)
-		webViewProperties.AdditionalBrowserArguments = '--disable-features=ElasticOverscroll'
-		webView.CreationProperties = webViewProperties
-		webView.DefaultBackgroundColor = Color.White # 默认底色
-		webView.CoreWebView2InitializationCompleted += self.__onWebviewReady # WebView 初始化完成回调
-		webView.NavigationStarting += self.__onNavigationStart # WebView 导航开始回调
-		webView.NavigationCompleted += self.__onNavigationCompleted # WebView 导航完成回调
-		webView.WebMessageReceived += self.__onJavaScriptMessage # WebView JS 消息回调
-		webView.Source = Uri(self.__navigateUri)
-		webViewHandle = self.__webViewHwnd = webView.Handle.ToInt32()
-		SetParent(webViewHandle, frameId)
-		frame.bind('<Configure>', self.__resizeWebView)
+		frame_id = frame.winfo_id()
+		webview = self.__webview = WebView2()
+		webview_properties = CoreWebView2CreationProperties()
+		webview_properties.UserDataFolder = configuration.data_folder
+		webview_properties.set_IsInPrivateModeEnabled(configuration.private_mode)
+		webview_properties.AdditionalBrowserArguments = '--disable-features=ElasticOverscroll'
+		webview.CreationProperties = webview_properties
+		webview.DefaultBackgroundColor = Color.White
+		webview.CoreWebView2InitializationCompleted += self.__on_webview_ready
+		webview.NavigationStarting += self.__on_navigation_start
+		webview.NavigationCompleted += self.__on_navigation_completed
+		webview.WebMessageReceived += self.__on_javaScript_message
+		webview.Source = Uri(self.__navigate_uri)
+		webViewHandle = self.__webview_hwnd = webview.Handle.ToInt32()
+		SetParent(webViewHandle, frame_id)
+		frame.bind('<Configure>', self.__resize_webview)
 		self.__startParam = None
 		root.mainloop()
-		self.__root = self.__frame = self.__webView = self.__webViewHwnd = None
+		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
 	def start(self, uri: Optional[str] = None, width = 384, height = 256):
 		if self.__thread: raise Exception("WebView is already started.")
-		if uri: self.__navigateUri = uri
+		if uri: self.__navigate_uri = uri
 		thread = Thread(ThreadStart(self.__run))
 		self.__thread = thread
 		thread.ApartmentState = ApartmentState.STA
@@ -112,37 +112,35 @@ class WebViewApplication:
 		self.__thread.Abort()
 
 	@property
-	def navigateUri(self): return self.__navigateUri
-	@navigateUri.setter
-	def navigateUri(self, value):
-		self.__navigateUri = value
-		if self.__webView: self.__webView.Source = Uri(value)
+	def navigate_uri(self): return self.__navigate_uri
+	@navigate_uri.setter
+	def navigate_uri(self, value):
+		self.__navigate_uri = value
+		if self.__webview: self.__webview.Source = Uri(value)
 
-	def __onNewWindowRequest(self, webViewInstance, args):
+	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
 
-	def __scriptCallHandler(self, methodName: str, args: list):
-		print(methodName, args)
+	def __scriptCallHandler(self, method_name: str, args: list):
+		print(method_name, args)
 
-	def __onWebviewReady(self, webViewInstance, args):
+	def __on_webview_ready(self, webview_instance, args):
 		if not args.IsSuccess:
 			print_exception(WebViewException(args.InitializationException))
 			return
 		configuration = self.__configuration
-		core = webViewInstance.CoreWebView2
-		core.NewWindowRequested += self.__onNewWindowRequest
-		if configuration.webApiPermissionPypass: core.PermissionRequested += self.__onPermissionRequested
+		core = webview_instance.CoreWebView2
+		core.NewWindowRequested += self.__on_new_window_request
+		if configuration.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
 		global inspect 
 		inspect = Bridge(configuration.api)
 		if configuration.api:
 			core.AddHostObjectToScript("api", inspect)
 			Thread(target=doInspect).start()
-		debugEnabled = configuration.debugEnabled
+		debug_enabled = configuration.debug_enabled
 		settings = core.Settings
-		settings.AreBrowserAcceleratorKeysEnabled = debugEnabled
-		settings.AreDefaultContextMenusEnabled = debugEnabled
+		settings.AreBrowserAcceleratorKeysEnabled = settings.AreDefaultContextMenusEnabled = settings.AreDevToolsEnabled = debug_enabled
 		settings.AreDefaultScriptDialogsEnabled = True
-		settings.AreDevToolsEnabled = debugEnabled
 		settings.IsBuiltInErrorPageEnabled = True
 		settings.IsScriptEnabled = True
 		settings.IsWebMessageEnabled = True
@@ -150,28 +148,27 @@ class WebViewApplication:
 		settings.IsSwipeNavigationEnabled = False
 		settings.IsZoomControlEnabled = False
 
-		ua = configuration.userAgent
+		ua = configuration.user_agent
 		if ua: settings.UserAgent = ua
 
-		vHost = configuration.vHostPath
-		if vHost: core.SetVirtualHostNameToFolderMapping(configuration.vHostName, vHost, CoreWebView2HostResourceAccessKind.DenyCors if configuration.vHostCORS else CoreWebView2HostResourceAccessKind.Deny)
+		vhost = configuration.vhost_path
+		if vhost: core.SetVirtualHostNameToFolderMapping(configuration.vhost_name, vhost, CoreWebView2HostResourceAccessKind.DenyCors if configuration.vhost_cors else CoreWebView2HostResourceAccessKind.Deny)
 
 		# cookies persist even if UserDataFolder is in memory. We have to delete cookies manually.
-		if configuration.privateMode: core.CookieManager.DeleteAllCookies()
+		if configuration.private_mode: core.CookieManager.DeleteAllCookies()
 
-		if debugEnabled: core.OpenDevToolsWindow()
+		if debug_enabled: core.OpenDevToolsWindow()
 
-	def __onNavigationStart(self, webViewInstance, args):
+	def __on_navigation_start(self, _, args):
 		print('Webview navigation started: ' + args.Uri)
 
-	def __onNavigationCompleted(self, webViewInstance, args):
+	def __on_navigation_completed(self, _, args):
 		print('Webview navigation completed, status: ' + str(args.HttpStatusCode))
-		# self.Show()
 
-	def __onPermissionRequested(self, webViewInstance, args):
+	def __on_permission_requested(self, _, args):
 		args.State = CoreWebView2PermissionState.Allow
 
-	def __onJavaScriptMessage(self, webViewInstance, args):
+	def __on_javaScript_message(self, _, args):
 		data = args.WebMessageAsJson
 		print(data)
 		print(args.AdditionalObjects)
@@ -184,5 +181,5 @@ def doInspect():
 			inspect.inspect = None
 		sleep(1)
 
-a = WebViewApplication(WebViewConfiguration(debugEnabled= True))
+a = WebViewApplication(WebViewConfiguration(debug_enabled= True))
 a.start("https://bsif.netlify.app")

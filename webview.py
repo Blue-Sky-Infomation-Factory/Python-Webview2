@@ -1,24 +1,27 @@
-from time import sleep
 from tkinter import Frame, Tk
 from traceback import print_exception
 from typing import Optional, Tuple
 import os
 import clr
 from win32gui import SetParent, MoveWindow
+from json import loads
 
 clr.AddReference('System.Windows.Forms') # type: ignore
 clr.AddReference('System.Collections') # type: ignore
 clr.AddReference('System.Threading') # type: ignore
 clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.Core.dll') # type: ignore
 clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.WinForms.dll') # type: ignore
-clr.AddReference(os.path.dirname(__file__) + '/PythonMicrosoftWebView2Bridge.dll') # type: ignore
+clr.AddReference(os.path.dirname(__file__) + '/BSIF.WebView2Bridge.dll') # type: ignore
 
 from System.Drawing import Color # type: ignore
 from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
 from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
 from System import Uri # type: ignore
 from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
-from PythonMicrosoftWebView2Bridge import Bridge # type: ignore
+from System.Collections.Generic import List # type: ignore
+from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
+
+with open(os.path.dirname(__file__) + "/bridge_js.js") as file: __bridge_script = file.read()
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -61,7 +64,6 @@ class WebViewApplication:
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = ""
-		self.__startParam = None
 
 	def __resize_webview(self, _ = None):
 		assert self.__root and self.__frame and self.__webview_hwnd
@@ -93,7 +95,6 @@ class WebViewApplication:
 		webViewHandle = self.__webview_hwnd = webview.Handle.ToInt32()
 		SetParent(webViewHandle, frame_id)
 		frame.bind('<Configure>', self.__resize_webview)
-		self.__startParam = None
 		root.mainloop()
 		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
@@ -121,8 +122,9 @@ class WebViewApplication:
 	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
 
-	def __scriptCallHandler(self, method_name: str, args: list):
-		print(method_name, args)
+	def __scriptCallHandler(self, method_name: str, argsJson: str):
+		print(method_name, loads(argsJson))
+		return "ok"
 
 	def __on_webview_ready(self, webview_instance, args):
 		if not args.IsSuccess:
@@ -132,11 +134,9 @@ class WebViewApplication:
 		core = webview_instance.CoreWebView2
 		core.NewWindowRequested += self.__on_new_window_request
 		if configuration.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
-		global inspect 
-		inspect = Bridge(configuration.api)
-		if configuration.api:
-			core.AddHostObjectToScript("api", inspect)
-			Thread(target=doInspect).start()
+		bridge = WebView2Bridge(WebView2Bridge.Caller(self.__scriptCallHandler), ["a"])
+		core.AddHostObjectToScript("bridge", bridge)
+		core.AddScriptToExecuteOnDocumentCreatedAsync(globals()['__bridge_script'])
 		debug_enabled = configuration.debug_enabled
 		settings = core.Settings
 		settings.AreBrowserAcceleratorKeysEnabled = settings.AreDefaultContextMenusEnabled = settings.AreDevToolsEnabled = debug_enabled
@@ -173,13 +173,5 @@ class WebViewApplication:
 		print(data)
 		print(args.AdditionalObjects)
 
-inspect = None
-def doInspect():
-	while True:
-		if inspect.inspect is not None:
-			print(inspect.inspect)
-			inspect.inspect = None
-		sleep(1)
-
-a = WebViewApplication(WebViewConfiguration(debug_enabled= True))
-a.start("https://bsif.netlify.app")
+a = WebViewApplication(WebViewConfiguration(debug_enabled= True, api=True))
+a.start("https://bsif.netlify.app/page/test")

@@ -1,4 +1,5 @@
 from inspect import isbuiltin, isfunction, ismethod
+from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from traceback import print_exception
@@ -7,6 +8,7 @@ import os
 import clr
 from win32gui import SetParent, MoveWindow
 from json import dumps, loads
+from handles import Handlers
 
 clr.AddReference('System.Windows.Forms') # type: ignore
 clr.AddReference('System.Threading') # type: ignore
@@ -14,12 +16,12 @@ clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.Core.dll')
 clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.WinForms.dll') # type: ignore
 clr.AddReference(os.path.dirname(__file__) + '/BSIF.WebView2Bridge.dll') # type: ignore
 
-from System.Drawing import Color # type: ignore
-from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
-from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
-from System import Uri # type: ignore
-from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
+from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
+from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
+from System import Uri # type: ignore
+from System.Drawing import Color # type: ignore
+from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 
 with open(os.path.dirname(__file__) + "/bridge_js.js") as file: _bridge_script = file.read()
 
@@ -27,6 +29,8 @@ class WebViewException(Exception):
 	def __init__(self, exception):
 		super().__init__(exception.Message)
 		self.raw = exception
+
+def serialize_object(object: object): return object.__dict__
 
 def pick_methods(object: object) -> Dict[str, Callable]:
 	methods = {}
@@ -80,11 +84,19 @@ class WebViewApplication:
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = ""
 		self.__api = (pick_dictionary_methods if type(configuration.api) is dict else pick_methods)(configuration.api) # type: ignore
+		self.__message_handlers = Handlers()
+		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
 
 	def __resize_webview(self, _):
 		assert self.__root and self.__frame and self.__webview_hwnd
 		frame = self.__frame
 		MoveWindow(self.__webview_hwnd, 0,0, frame.winfo_width(), frame.winfo_height(), False)
+
+	def __call_handler(self, _):
+		queue = self.__call_queue
+		task = queue.get(block=False)
+		queue.task_done()
+		task[0](*task[1])
 
 	def __run(self):
 		configuration = self.__configuration
@@ -111,13 +123,14 @@ class WebViewApplication:
 		webview_handle = self.__webview_hwnd = webview.Handle.ToInt32()
 		SetParent(webview_handle, frame_id)
 		frame.bind('<Configure>', self.__resize_webview)
+		root.bind('<<AppCall>>', self.__call_handler)
 		root.mainloop()
 		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
 	def start(self, uri: Optional[str] = None, width = 384, height = 256):
 		global running_application
-		if current_thread() is not main_thread(): raise AssertionError("WebView can start in main thread only.")
-		if self.__thread: raise AssertionError("WebView is already started.")
+		assert (current_thread() is main_thread()), "WebView can start in main thread only."
+		assert not self.__thread, "WebView is already started."
 		if uri: self.__navigate_uri = uri
 		thread = Thread(ThreadStart(self.__run))
 		self.__thread = thread
@@ -128,7 +141,7 @@ class WebViewApplication:
 		running_application = self.__thread = None
 
 	def stop(self):
-		if not self.__thread: raise AssertionError("WebView is not started.")
+		assert self.__thread, "WebView is not started."
 		self.__thread.Abort()
 
 	@property
@@ -187,8 +200,21 @@ class WebViewApplication:
 		args.State = CoreWebView2PermissionState.Allow
 
 	def __on_javascript_message(self, _, args):
-		data = args.WebMessageAsJson
-		print(data)
-		print(args.AdditionalObjects)
+		self.__message_handlers.triggle(args.WebMessageAsJson, args.AdditionalObjects)
+
+	def __cross_thread_call(self, function: Callable, *args):
+		assert self.__root, "WebView is not started."
+		self.__call_queue.put((function, args), block=False)
+		self.__root.event_generate("<<AppCall>>")
+
+	def __post_message(self, message: str):
+		assert self.__webview, "WebView is not started."
+		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
+
+	def post_message(self, message):
+		self.__cross_thread_call(self.__post_message, dumps(message, ensure_ascii=False, default=serialize_object))
+
+	@property
+	def message_handlers(self): return self.__message_handlers
 
 running_application: Optional[WebViewApplication] = None

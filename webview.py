@@ -21,7 +21,7 @@ from System import Uri # type: ignore
 from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 
-with open(os.path.dirname(__file__) + "/bridge_js.js") as file: BRIDGE_SCRIPT = file.read()
+with open(os.path.dirname(__file__) + "/bridge_js.js") as file: _bridge_script = file.read()
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -79,7 +79,7 @@ class WebViewApplication:
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = ""
-		self.__api = (pick_dictionary_methods if type(configuration.api) is dict else pick_methods)(configuration.api)
+		self.__api = (pick_dictionary_methods if type(configuration.api) is dict else pick_methods)(configuration.api) # type: ignore
 
 	def __resize_webview(self, _):
 		assert self.__root and self.__frame and self.__webview_hwnd
@@ -154,7 +154,7 @@ class WebViewApplication:
 		if configuration.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
 		bridge = WebView2Bridge(WebView2Bridge.Caller(self.__script_call_handler), self.__api.keys())
 		core.AddHostObjectToScript("bridge", bridge)
-		core.AddScriptToExecuteOnDocumentCreatedAsync(BRIDGE_SCRIPT)
+		core.AddScriptToExecuteOnDocumentCreatedAsync(_bridge_script)
 		debug_enabled = configuration.debug_enabled
 		settings = core.Settings
 		settings.AreBrowserAcceleratorKeysEnabled = settings.AreDefaultContextMenusEnabled = settings.AreDevToolsEnabled = debug_enabled

@@ -1,20 +1,22 @@
+import clr
 from inspect import isbuiltin, isfunction, ismethod
+from json import dumps, loads
+from os import getenv
+from os.path import dirname
 from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from traceback import print_exception
 from typing import Any, Callable, Dict, Optional, Tuple
-import os
-import clr
 from win32gui import SetParent, MoveWindow
-from json import dumps, loads
+
 from handles import Handlers
 
 clr.AddReference('System.Windows.Forms') # type: ignore
 clr.AddReference('System.Threading') # type: ignore
-clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.Core.dll') # type: ignore
-clr.AddReference(os.path.dirname(__file__) + '/Microsoft.Web.WebView2.WinForms.dll') # type: ignore
-clr.AddReference(os.path.dirname(__file__) + '/BSIF.WebView2Bridge.dll') # type: ignore
+clr.AddReference(dirname(__file__) + '/Microsoft.Web.WebView2.Core.dll') # type: ignore
+clr.AddReference(dirname(__file__) + '/Microsoft.Web.WebView2.WinForms.dll') # type: ignore
+clr.AddReference(dirname(__file__) + '/BSIF.WebView2Bridge.dll') # type: ignore
 
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
@@ -23,7 +25,7 @@ from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 
-with open(os.path.dirname(__file__) + "/bridge_js.js") as file: _bridge_script = file.read()
+with open(dirname(__file__) + "/bridge_js.js") as file: _bridge_script = file.read()
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -48,7 +50,7 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 
 class WebViewConfiguration:
 	def __init__(self,
-			data_folder: str = os.getenv('TEMP') + '/Microsoft WebView', # WebView 数据文件夹 # type: ignore
+			data_folder: str = getenv('TEMP') + '/Microsoft WebView', # WebView 数据文件夹 # type: ignore
 			private_mode = True, # 隐私模式
 			debug_enabled = False, # 启用调试特性
 			user_agent:Optional[str] = None, # 用户代理标识

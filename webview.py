@@ -143,8 +143,8 @@ class WebViewApplication:
 		running_application = self.__thread = None
 
 	def stop(self):
-		assert self.__thread, "WebView is not started."
-		self.__thread.Abort()
+		assert self.__root, "WebView is not started."
+		self.__root.quit()
 
 	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
@@ -222,7 +222,6 @@ class WebViewApplication:
 		assert self.__webview, "WebView is not started."
 		self.__webview.CoreWebView2.ExecuteScriptAsync(script)
 	def execute_javascript(self, script: str):
-		assert self.__webview, "WebView is not started."
 		self.__cross_thread_call(self.__execute_javascript, script)
 
 	@property

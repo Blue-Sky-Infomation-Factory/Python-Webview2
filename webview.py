@@ -106,7 +106,7 @@ class WebViewApplication:
 		root.title(self.__title)
 		root.minsize(*configuration.min_size)
 		if configuration.max_size: root.maxsize(*configuration.max_size)
-		
+
 		frame = self.__frame = Frame(root)
 		frame.pack(fill="both",expand=True)
 		frame_id = frame.winfo_id()
@@ -145,13 +145,6 @@ class WebViewApplication:
 	def stop(self):
 		assert self.__thread, "WebView is not started."
 		self.__thread.Abort()
-
-	@property
-	def navigate_uri(self): return self.__navigate_uri
-	@navigate_uri.setter
-	def navigate_uri(self, value):
-		self.__navigate_uri = value
-		if self.__webview: self.__webview.Source = Uri(value)
 
 	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
@@ -209,17 +202,25 @@ class WebViewApplication:
 		self.__call_queue.put((function, args), block=False)
 		self.__root.event_generate("<<AppCall>>")
 
+	def __navigate_to(self, uri: str):
+		assert self.__webview, "WebView is not started."
+		self.__webview.Source = Uri(uri)
+	@property
+	def navigate_uri(self): return self.__navigate_uri
+	@navigate_uri.setter
+	def navigate_uri(self, value):
+		self.__navigate_uri = value
+		if self.__webview: self.__cross_thread_call(self.__navigate_to, value)
+
 	def __post_message(self, message: str):
 		assert self.__webview, "WebView is not started."
 		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
-
 	def post_message(self, message: Any):
 		self.__cross_thread_call(self.__post_message, dumps(message, ensure_ascii=False, default=serialize_object))
 	
 	def __execute_javascript(self, script: str):
 		assert self.__webview, "WebView is not started."
 		self.__webview.CoreWebView2.ExecuteScriptAsync(script)
-
 	def execute_javascript(self, script: str):
 		assert self.__webview, "WebView is not started."
 		self.__cross_thread_call(self.__execute_javascript, script)

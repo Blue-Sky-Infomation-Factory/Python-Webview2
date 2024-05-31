@@ -2,21 +2,22 @@ import clr
 from inspect import isbuiltin, isfunction, ismethod
 from json import dumps, loads
 from os import getenv
-from os.path import dirname
+from os.path import dirname, join
 from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from traceback import print_exception
 from typing import Any, Callable, Dict, Optional, Tuple
 from win32gui import SetParent, MoveWindow
-
-from handles import Handlers
+from .handlers import Handlers
 
 clr.AddReference('System.Windows.Forms') # type: ignore
 clr.AddReference('System.Threading') # type: ignore
-clr.AddReference(dirname(__file__) + '/Microsoft.Web.WebView2.Core.dll') # type: ignore
-clr.AddReference(dirname(__file__) + '/Microsoft.Web.WebView2.WinForms.dll') # type: ignore
-clr.AddReference(dirname(__file__) + '/BSIF.WebView2Bridge.dll') # type: ignore
+self_path = dirname(__file__)
+clr.AddReference(join(self_path, 'Microsoft.Web.WebView2.Core.dll')) # type: ignore
+clr.AddReference(join(self_path,'Microsoft.Web.WebView2.WinForms.dll')) # type: ignore
+clr.AddReference(join(self_path, 'BSIF.WebView2Bridge.dll')) # type: ignore
+del self_path
 
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore

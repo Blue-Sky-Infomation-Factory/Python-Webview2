@@ -213,8 +213,16 @@ class WebViewApplication:
 		assert self.__webview, "WebView is not started."
 		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
 
-	def post_message(self, message):
+	def post_message(self, message: Any):
 		self.__cross_thread_call(self.__post_message, dumps(message, ensure_ascii=False, default=serialize_object))
+	
+	def __execute_javascript(self, script: str):
+		assert self.__webview, "WebView is not started."
+		self.__webview.CoreWebView2.ExecuteScriptAsync(script)
+
+	def execute_javascript(self, script: str):
+		assert self.__webview, "WebView is not started."
+		self.__cross_thread_call(self.__execute_javascript, script)
 
 	@property
 	def message_handlers(self): return self.__message_handlers

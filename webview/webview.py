@@ -32,17 +32,17 @@ class WebViewException(Exception):
 
 class WebViewConfiguration:
 	def __init__(self,
-			data_folder: str = getenv('TEMP') + '/Microsoft WebView', # WebView 数据文件夹 # type: ignore
-			private_mode = True, # 隐私模式
-			debug_enabled = False, # 启用调试特性
-			user_agent:Optional[str] = None, # 用户代理标识
-			api: object = None, # 向 WebView 暴露的 API 对象
-			web_api_permission_bypass: bool = False, # 自动允许 Web API 的权限请求
-			vhost_path: Optional[str] = None, # vHost 映射的文件夹路径
-			vhost_name: str = "webview", # vHost 的域名
-			vhost_cors: bool = True, # 是否允许 vHost 访问外部资源
-			min_size: Tuple[int, int] = (384, 256), # 窗口显示区最小尺寸
-			max_size: Optional[Tuple[int, int]] = None # 窗口显示区最大尺寸
+			data_folder: str = getenv('TEMP') + '/Microsoft WebView', # type: ignore
+			private_mode = True,
+			debug_enabled = False,
+			user_agent:Optional[str] = None,
+			api: object = None,
+			web_api_permission_bypass: bool = False,
+			vhost_path: Optional[str] = None,
+			vhost_name: str = "webview",
+			vhost_cors: bool = True,
+			min_size: Tuple[int, int] = (384, 256),
+			max_size: Optional[Tuple[int, int]] = None
 		):
 		self.data_folder = data_folder
 		self.private_mode = private_mode

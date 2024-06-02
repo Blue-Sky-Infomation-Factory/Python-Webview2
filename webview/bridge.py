@@ -1,3 +1,6 @@
+from asyncio import get_event_loop, iscoroutine
+from threading import Thread
+import clr
 from inspect import isbuiltin, isfunction, ismethod
 from json import dumps, loads
 from os.path import dirname, join
@@ -26,8 +29,15 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 		if ismethod(value) or isfunction(value) or isbuiltin(value): methods[key] = value
 	return methods
 
-async def async_script_call_handler(function: Callable, args_json: str, async_object ):
-	pass
+def async_call_thread(function: Callable, args_json: str, async_object ):
+	try:
+		result=function(*loads(args_json))
+		if (iscoroutine(result)): result=get_event_loop().run_until_complete(result)
+	except BaseException as error:
+		async_object.SetResult("#" + dumps([error.__class__.__name__, str(error)], ensure_ascii=False))
+		return
+	try: async_object.SetResult(dumps(result, ensure_ascii=False, default=serialize_object))
+	except: async_object.SetResult("")
 
 class Bridge:
 	def __init__(self, core, api: object):
@@ -40,7 +50,6 @@ class Bridge:
 		))
 	
 	def __sync_call_handler(self, method_name: str, args_json: str):
-		return dumps(self.__api[method_name](*loads(args_json)), ensure_ascii=False)
+		return dumps(self.__api[method_name](*loads(args_json)), ensure_ascii=False, default=serialize_object)
 	def __async_call_handler(self, method_name: str, args_json: str, async_object):
-		print(method_name, args_json, async_object)
-		
+		Thread(None, async_call_thread, method_name, (self.__api[method_name], args_json, async_object), daemon=True).start()

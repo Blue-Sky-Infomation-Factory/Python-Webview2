@@ -8,7 +8,7 @@ setup(
     packages=find_packages(),
     package_data={
         "webview": [
-			"bridge_js.js",
+			"bridge.js",
 			"*.dll",
 			"runtimes/*/native/WebView2Loader.dll"
 		]

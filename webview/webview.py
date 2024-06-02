@@ -26,7 +26,7 @@ from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 
-with open(dirname(__file__) + "/bridge_js.js") as file: _bridge_script = file.read()
+with open(dirname(__file__) + "/bridge.js") as file: _bridge_script = file.read()
 
 class WebViewException(Exception):
 	def __init__(self, exception):

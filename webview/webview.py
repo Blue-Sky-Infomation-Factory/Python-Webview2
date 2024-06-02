@@ -1,53 +1,34 @@
 import clr
-from inspect import isbuiltin, isfunction, ismethod
-from json import dumps, loads
+from json import dumps
 from os import getenv
 from os.path import dirname, join
 from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from traceback import print_exception
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 from win32gui import SetParent, MoveWindow
+
+from .bridge import Bridge, serialize_object
 from .handlers import Handlers
 
 clr.AddReference('System.Windows.Forms') # type: ignore
 clr.AddReference('System.Threading') # type: ignore
 self_path = dirname(__file__)
 clr.AddReference(join(self_path, 'Microsoft.Web.WebView2.Core.dll')) # type: ignore
-clr.AddReference(join(self_path,'Microsoft.Web.WebView2.WinForms.dll')) # type: ignore
-clr.AddReference(join(self_path, 'BSIF.WebView2Bridge.dll')) # type: ignore
+clr.AddReference(join(self_path, 'Microsoft.Web.WebView2.WinForms.dll')) # type: ignore
 del self_path
 
-from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
 from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
 from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
 
-with open(dirname(__file__) + "/bridge.js") as file: _bridge_script = file.read()
-
 class WebViewException(Exception):
 	def __init__(self, exception):
 		super().__init__(exception.Message)
 		self.raw = exception
-
-def serialize_object(object: object): return object.__dict__
-
-def pick_methods(object: object) -> Dict[str, Callable]:
-	methods = {}
-	for name in dir(object):
-		if name.startswith("_"): continue
-		item = getattr(object, name)
-		if ismethod(item) or isfunction(item) or isbuiltin(item): methods[name] = item
-	return methods
-
-def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
-	methods = {}
-	for key, value in object.items():
-		if ismethod(value) or isfunction(value) or isbuiltin(value): methods[key] = value
-	return methods
 
 class WebViewConfiguration:
 	def __init__(self,
@@ -86,7 +67,6 @@ class WebViewApplication:
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = ""
-		self.__api = (pick_dictionary_methods if type(configuration.api) is dict else pick_methods)(configuration.api) # type: ignore
 		self.__message_handlers = Handlers()
 		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
 
@@ -150,9 +130,6 @@ class WebViewApplication:
 	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
 
-	def __script_call_handler(self, method_name: str, args_json: str):
-		return dumps(self.__api[method_name](*loads(args_json)), ensure_ascii=False)
-
 	def __on_webview_ready(self, webview_instance, args):
 		if not args.IsSuccess:
 			print_exception(WebViewException(args.InitializationException))
@@ -161,9 +138,7 @@ class WebViewApplication:
 		core = webview_instance.CoreWebView2
 		core.NewWindowRequested += self.__on_new_window_request
 		if configuration.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
-		bridge = WebView2Bridge(WebView2Bridge.Caller(self.__script_call_handler), self.__api.keys())
-		core.AddHostObjectToScript("bridge", bridge)
-		core.AddScriptToExecuteOnDocumentCreatedAsync(_bridge_script)
+		Bridge(core, self.__configuration.api)
 		debug_enabled = configuration.debug_enabled
 		settings = core.Settings
 		settings.AreBrowserAcceleratorKeysEnabled = settings.AreDefaultContextMenusEnabled = settings.AreDevToolsEnabled = debug_enabled

@@ -5,8 +5,9 @@ from os.path import dirname, join
 from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
+from tkinter.filedialog import askdirectory, askopenfilename, asksaveasfile
 from traceback import print_exception
-from typing import Any, Callable, Optional, Tuple, TypedDict, Unpack
+from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict, Unpack
 from win32gui import SetParent, MoveWindow
 
 from .bridge import Bridge, serialize_object
@@ -264,5 +265,43 @@ class WebViewApplication:
 	def exit_fullscreen(self):
 		assert self.__root, "WebView is not started."
 		self.__root.attributes('-fullscreen', False)
+
+	def show_open_file_picker(
+		self,
+		multiple: bool = True,
+		initial_directory: Optional[str] = None,
+		initial_file_name: Optional[str] = None,
+		title: Optional[str] = None,
+		file_types: Iterable[Tuple[str, str | List[str] | Tuple[str, ...]]] = [],
+	) -> Tuple[str, ...] | None:
+		result=askopenfilename(
+			parent=self.__root,
+			multiple=multiple, # type: ignore
+			initialdir=initial_directory,
+			initialfile=initial_file_name,
+			title=title,
+			filetypes=file_types
+		)
+		if not result: return None
+		return (result,) if not multiple else result
+	def show_save_file_picker(
+		self,
+		overwrite: bool = False,
+		binary: bool = False,
+		initial_directory: Optional[str] = None,
+		initial_file_name: Optional[str] = None,
+		title: Optional[str] = None,
+		file_types: Iterable[Tuple[str, str | List[str] | Tuple[str, ...]]] = [("all", "*")],
+	):
+		return asksaveasfile(
+			mode=("w+" if overwrite else "a+") + ("b" if binary else ""),
+			parent=self.__root,
+			initialdir=initial_directory,
+			initialfile=initial_file_name,
+			title=title,
+			filetypes=file_types
+		)
+	def show_directory_picker(self, initial_directory: Optional[str] = None, title: Optional[str] = None ) -> str | None:
+		return askdirectory(parent=self.__root, initialdir=initial_directory, title=title, mustexist=True)
 
 running_application: Optional[WebViewApplication] = None

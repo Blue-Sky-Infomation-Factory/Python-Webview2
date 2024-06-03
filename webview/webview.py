@@ -6,7 +6,7 @@ from queue import Queue
 from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from traceback import print_exception
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, TypedDict, Unpack
 from win32gui import SetParent, MoveWindow
 
 from .bridge import Bridge, serialize_object
@@ -23,7 +23,12 @@ from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView
 from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
 from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
-from System.Threading import Thread, ThreadStart, ApartmentState # type: ignore
+from System.Threading import Thread, ApartmentState, ParameterizedThreadStart # type: ignore
+
+class WebViewStartParameters(TypedDict, total=False):
+	size: Optional[Tuple[int, int]]
+	position: Optional[Tuple[int, int]]
+	hide: bool
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -66,7 +71,7 @@ class WebViewApplication:
 		self.__frame: Optional[Frame] = None
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
-		self.__navigate_uri = ""
+		self.__navigate_uri = "about:blank"
 		self.__message_handlers = Handlers()
 		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
 
@@ -81,13 +86,15 @@ class WebViewApplication:
 		queue.task_done()
 		task[0](*task[1])
 
-	def __run(self):
+	def __run(self, keywords: WebViewStartParameters):
 		configuration = self.__configuration
 		root = self.__root = Tk()
 		root.title(self.__title)
 		root.minsize(*configuration.min_size)
 		if configuration.max_size: root.maxsize(*configuration.max_size)
-
+		size=keywords.get("size")
+		position=keywords.get("position")
+		if size or position: root.geometry((f"{size[0]}x{size[1]}" if size else '') + (f"+{position[0]}+{position[1]}" if position else ""))
 		frame = self.__frame = Frame(root)
 		frame.pack(fill="both",expand=True)
 		frame_id = frame.winfo_id()
@@ -110,15 +117,15 @@ class WebViewApplication:
 		root.mainloop()
 		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
-	def start(self, uri: Optional[str] = None, width = 384, height = 256):
+	def start(self, uri: Optional[str] = None, **keywords: Unpack[WebViewStartParameters]):
 		global running_application
 		assert (current_thread() is main_thread()), "WebView can start in main thread only."
 		assert not self.__thread, "WebView is already started."
 		if uri: self.__navigate_uri = uri
-		thread = Thread(ThreadStart(self.__run))
+		thread = Thread(ParameterizedThreadStart(self.__run))
 		self.__thread = thread
 		thread.ApartmentState = ApartmentState.STA
-		thread.Start()
+		thread.Start(keywords)
 		running_application = self
 		thread.Join()
 		running_application = self.__thread = None

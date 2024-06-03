@@ -95,6 +95,7 @@ class WebViewApplication:
 		size=keywords.get("size")
 		position=keywords.get("position")
 		if size or position: root.geometry((f"{size[0]}x{size[1]}" if size else '') + (f"+{position[0]}+{position[1]}" if position else ""))
+		if keywords.get("hide"): root.withdraw()
 		frame = self.__frame = Frame(root)
 		frame.pack(fill="both",expand=True)
 		frame_id = frame.winfo_id()
@@ -209,5 +210,13 @@ class WebViewApplication:
 
 	@property
 	def message_handlers(self): return self.__message_handlers
+
+	def show(self):
+		assert self.__root, "WebView is not started."
+		self.__root.deiconify()
+
+	def hide(self):
+		assert self.__root, "WebView is not started."
+		self.__root.withdraw()
 
 running_application: Optional[WebViewApplication] = None

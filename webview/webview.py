@@ -211,12 +211,58 @@ class WebViewApplication:
 	@property
 	def message_handlers(self): return self.__message_handlers
 
+	@property
+	def size(self):
+		root = self.__root
+		assert root, "WebView is not started."
+		return root.winfo_width(), root.winfo_height()
+	def resize(self, width:int, height:int):
+		assert self.__root, "WebView is not started."
+		self.__root.geometry(f"{width}x{height}")
+
+	@property
+	def position(self):
+		root = self.__root
+		assert root, "WebView is not started."
+		return root.winfo_x(), root.winfo_y()
+	def move(self, x:int, y:int):
+		assert self.__root, "WebView is not started."
+		self.__root.geometry(f"+{x}+{y}")
+
+	@property
+	def state(self):
+		assert self.__root, "WebView is not started."
+		match self.__root.state():
+			case 'zoomed': return 'maximized'
+			case 'iconic': return 'minimized'
+			case 'withdrawn': return 'hidden'
+			case 'normal': return 'normal'
+			case _: return 'unknown'
 	def show(self):
 		assert self.__root, "WebView is not started."
 		self.__root.deiconify()
-
 	def hide(self):
 		assert self.__root, "WebView is not started."
 		self.__root.withdraw()
+	def maximize(self):
+		assert self.__root, "WebView is not started."
+		self.__root.state('zoomed')
+	def minimize(self):
+		assert self.__root, "WebView is not started."
+		self.__root.iconify()
+	def normalize(self):
+		assert self.__root, "WebView is not started."
+		self.__root.state('normal')
+
+	@property
+	def is_fullscreen(self):
+		assert self.__root, "WebView is not started."
+		return bool(self.__root.attributes('-fullscreen'))
+	def fullscreen(self):
+		assert self.__root, "WebView is not started."
+		self.__root.attributes('-fullscreen', True)
+	def exit_fullscreen(self):
+		assert self.__root, "WebView is not started."
+		self.__root.attributes('-fullscreen', False)
 
 running_application: Optional[WebViewApplication] = None

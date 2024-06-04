@@ -20,12 +20,11 @@ setup(
 		"License :: OSI Approved :: BSD License",
 		"Operating System :: Microsoft :: Windows :: Windows 10",
 		"Operating System :: Microsoft :: Windows :: Windows 11",
-		# "Programming Language :: Python :: 3.9",
-		# "Programming Language :: Python :: 3.10",
+		"Programming Language :: Python :: Implementation :: CPython",
 		"Programming Language :: Python :: 3.11",
 		"Programming Language :: Python :: 3.12"
 	],
 	url="https://github.com/Blue-Sky-Infomation-Factory/Python-Webview2"
 )
 
-# python setup.py bdist_wheel
+# python setup.py bdist_wheel --python-tag cp311 --plat-name win_amd64

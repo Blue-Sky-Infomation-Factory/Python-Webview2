@@ -14,13 +14,15 @@ setup(
 		]
 	},
 	license="BSD 3-Clause License",
-	python_requires=">=3.11",
+	python_requires=">=3.9",
 	install_requires=["pythonnet", "pywin32"],
 	classifiers=[
 		"License :: OSI Approved :: BSD License",
 		"Operating System :: Microsoft :: Windows :: Windows 10",
 		"Operating System :: Microsoft :: Windows :: Windows 11",
 		"Programming Language :: Python :: Implementation :: CPython",
+		"Programming Language :: Python :: 3.9",
+		"Programming Language :: Python :: 3.10",
 		"Programming Language :: Python :: 3.11",
 		"Programming Language :: Python :: 3.12"
 	],

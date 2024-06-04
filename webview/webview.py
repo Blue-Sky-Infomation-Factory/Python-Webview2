@@ -7,7 +7,7 @@ from threading import current_thread, main_thread
 from tkinter import Frame, Tk
 from tkinter.filedialog import askdirectory, askopenfilename, asksaveasfile
 from traceback import print_exception
-from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict, Unpack
+from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict
 from win32gui import SetParent, MoveWindow
 
 from .bridge import Bridge, serialize_object
@@ -126,7 +126,7 @@ class WebViewApplication:
 		root.mainloop()
 		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
-	def start(self, uri: Optional[str] = None, **keywords: Unpack[WebViewStartParameters]):
+	def start(self, uri: Optional[str] = None, **keywords):
 		global running_application
 		assert (current_thread() is main_thread()), "WebView can start in main thread only."
 		assert not self.__thread, "WebView is already started."

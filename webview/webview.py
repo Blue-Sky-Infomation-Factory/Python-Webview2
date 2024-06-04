@@ -62,6 +62,13 @@ class WebViewConfiguration:
 		self.min_size = min_size
 		self.max_size = max_size
 
+state_dict={
+	"zoomed": "maximized",
+	"iconic": "minimized",
+	"withdrawn": "hidden",
+	"normal": "normal"
+}
+
 class WebViewApplication:
 
 	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = 'WebView Application'):
@@ -233,12 +240,7 @@ class WebViewApplication:
 	@property
 	def state(self):
 		assert self.__root, "WebView is not started."
-		match self.__root.state():
-			case 'zoomed': return 'maximized'
-			case 'iconic': return 'minimized'
-			case 'withdrawn': return 'hidden'
-			case 'normal': return 'normal'
-			case _: return 'unknown'
+		return state_dict.get(self.__root.state(), "unknown")
 	def show(self):
 		assert self.__root, "WebView is not started."
 		self.__root.deiconify()

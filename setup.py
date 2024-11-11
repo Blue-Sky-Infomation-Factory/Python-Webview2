@@ -1,10 +1,15 @@
 from setuptools import setup, find_packages
 
+with open('README.md', 'r') as file:
+    readme = file.read()
+
 setup(
 	name="bsif-webview2",
 	version="1.2.1",
 	author="Blue Sky Infomation Factory",
 	description="Microsoft Webview2 for python.",
+	long_description=readme,
+	long_description_content_type="text/markdown",
 	packages=find_packages(),
 	package_data={
 		"webview": [

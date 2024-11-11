@@ -33,7 +33,7 @@ jobs:
         python setup.py bdist_wheel --python-tag cp311 --plat-name win_amd64
         python setup.py bdist_wheel --python-tag cp312 --plat-name win_amd64
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-output
         path: dist/*

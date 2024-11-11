@@ -1,5 +1,6 @@
 from asyncio import get_event_loop, iscoroutine
 from threading import Thread
+from traceback import print_exception
 import clr
 from inspect import isbuiltin, isfunction, ismethod
 from json import dumps, loads
@@ -35,9 +36,12 @@ def async_call_thread(function: Callable, args_json: str, async_object ):
 		if (iscoroutine(result)): result=get_event_loop().run_until_complete(result)
 	except BaseException as error:
 		async_object.SetResult("#" + dumps([error.__class__.__name__, str(error)], ensure_ascii=False))
+		print_exception(error)
 		return
 	try: async_object.SetResult(dumps(result, ensure_ascii=False, default=serialize_object))
-	except: async_object.SetResult("")
+	except BaseException as error:
+		async_object.SetResult("")
+		print_exception(error)
 
 class Bridge:
 	def __init__(self, core, api: object):

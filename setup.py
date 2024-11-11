@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name="bsif-webview2",
-	version="1.2.0",
+	version="1.2.1",
 	author="Blue Sky Infomation Factory",
 	description="Microsoft Webview2 for python.",
 	packages=find_packages(),

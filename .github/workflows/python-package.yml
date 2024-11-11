@@ -2,7 +2,7 @@ name: Python package
 
 on:
   release:
-    types: [released, published]
+    types: [created, published, released]
 
 jobs:
   build:

@@ -4,20 +4,21 @@ from os import getenv
 from os.path import dirname, join
 from queue import Queue
 from threading import current_thread, main_thread
-from tkinter import Frame, Tk
+from tkinter import Frame, Label, Tk
 from tkinter.filedialog import askdirectory, askopenfilename, asksaveasfile
 from traceback import print_exception
 from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict, Unpack
-from win32gui import SetParent, MoveWindow
+from win32gui import SetParent, MoveWindow, GetParent, SetWindowLong, GetWindowLong
+from win32con import GWL_STYLE, WS_CAPTION, WS_THICKFRAME
 
 from .bridge import Bridge, serialize_object
 from .handlers import Handlers
 
-clr.AddReference('System.Windows.Forms') # type: ignore
-clr.AddReference('System.Threading') # type: ignore
+clr.AddReference("System.Windows.Forms") # type: ignore
+clr.AddReference("System.Threading") # type: ignore
 self_path = dirname(__file__)
-clr.AddReference(join(self_path, 'Microsoft.Web.WebView2.Core.dll')) # type: ignore
-clr.AddReference(join(self_path, 'Microsoft.Web.WebView2.WinForms.dll')) # type: ignore
+clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ignore
+clr.AddReference(join(self_path, "Microsoft.Web.WebView2.WinForms.dll")) # type: ignore
 del self_path
 
 from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
@@ -25,11 +26,14 @@ from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProper
 from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ApartmentState, ParameterizedThreadStart # type: ignore
+from System.Windows.Forms import AnchorStyles, DockStyle # type: ignore
 
 class WebViewStartParameters(TypedDict, total=False):
 	size: Optional[Tuple[int, int]]
 	position: Optional[Tuple[int, int]]
 	hide: bool
+	borderless: bool
+	background_transparent: bool # not implemented
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -38,7 +42,7 @@ class WebViewException(Exception):
 
 class WebViewConfiguration:
 	def __init__(self,
-			data_folder: str = getenv('TEMP') + '/Microsoft WebView', # type: ignore
+			data_folder: str = getenv("TEMP") + "/Microsoft WebView", # type: ignore
 			private_mode = True,
 			debug_enabled = False,
 			user_agent:Optional[str] = None,
@@ -71,19 +75,19 @@ state_dict={
 
 class WebViewApplication:
 
-	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = 'WebView Application'):
+	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = "WebView Application"):
 		self.__configuration = configuration
 		self.__thread: Optional[Thread] = None
 		self.__title = title
 		self.__root: Optional[Tk] = None
-		self.__frame: Optional[Frame] = None
+		self.__frame: Optional[Frame | Label] = None
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = "about:blank"
 		self.__message_handlers = Handlers()
 		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
 
-	def __resize_webview(self, _):
+	def __resize_webview(self, *_):
 		assert self.__root and self.__frame and self.__webview_hwnd
 		frame = self.__frame
 		MoveWindow(self.__webview_hwnd, 0,0, frame.winfo_width(), frame.winfo_height(), False)
@@ -94,26 +98,34 @@ class WebViewApplication:
 		queue.task_done()
 		task[0](*task[1])
 
+	def __borderlessfy(self, *_):
+		root = self.__root
+		hwnd = GetParent(root.winfo_id()) # type: ignore
+		SetWindowLong(GetParent(root.winfo_id()), GWL_STYLE, GetWindowLong(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME)) # type: ignore
+		root.unbind("<Map>") # type: ignore
+
 	def __run(self, keywords: WebViewStartParameters):
 		configuration = self.__configuration
 		root = self.__root = Tk()
+		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
 		root.title(self.__title)
 		root.minsize(*configuration.min_size)
 		if configuration.max_size: root.maxsize(*configuration.max_size)
 		size=keywords.get("size")
 		position=keywords.get("position")
-		if size or position: root.geometry((f"{size[0]}x{size[1]}" if size else '') + (f"+{position[0]}+{position[1]}" if position else ""))
+		if size or position: root.geometry((f"{size[0]}x{size[1]}" if size else "") + (f"+{position[0]}+{position[1]}" if position else ""))
 		if keywords.get("hide"): root.withdraw()
 		frame = self.__frame = Frame(root)
-		frame.pack(fill="both",expand=True)
+		frame.configure(background="#FFF")
+		frame.pack(fill="both", expand=True)
 		frame_id = frame.winfo_id()
 		webview = self.__webview = WebView2()
 		webview_properties = CoreWebView2CreationProperties()
 		webview_properties.UserDataFolder = configuration.data_folder
 		webview_properties.set_IsInPrivateModeEnabled(configuration.private_mode)
-		webview_properties.AdditionalBrowserArguments = '--disable-features=ElasticOverscroll'
+		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
 		webview.CreationProperties = webview_properties
-		webview.DefaultBackgroundColor = Color.White
+		webview.DefaultBackgroundColor = Color.Transparent
 		webview.CoreWebView2InitializationCompleted += self.__on_webview_ready
 		webview.NavigationStarting += self.__on_navigation_start
 		webview.NavigationCompleted += self.__on_navigation_completed
@@ -121,8 +133,8 @@ class WebViewApplication:
 		webview.Source = Uri(self.__navigate_uri)
 		webview_handle = self.__webview_hwnd = webview.Handle.ToInt32()
 		SetParent(webview_handle, frame_id)
-		frame.bind('<Configure>', self.__resize_webview)
-		root.bind('<<AppCall>>', self.__call_handler)
+		frame.bind("<Configure>", self.__resize_webview)
+		root.bind("<<AppCall>>", self.__call_handler)
 		root.mainloop()
 		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
 
@@ -178,10 +190,10 @@ class WebViewApplication:
 		if debug_enabled: core.OpenDevToolsWindow()
 
 	def __on_navigation_start(self, _, args):
-		print('Webview navigation started: ' + args.Uri)
+		print("Webview navigation started: " + args.Uri)
 
 	def __on_navigation_completed(self, _, args):
-		print('Webview navigation completed, status: ' + str(args.HttpStatusCode))
+		print("Webview navigation completed, status: " + str(args.HttpStatusCode))
 
 	def __on_permission_requested(self, _, args):
 		args.State = CoreWebView2PermissionState.Allow
@@ -249,24 +261,24 @@ class WebViewApplication:
 		self.__root.withdraw()
 	def maximize(self):
 		assert self.__root, "WebView is not started."
-		self.__root.state('zoomed')
+		self.__root.state("zoomed")
 	def minimize(self):
 		assert self.__root, "WebView is not started."
 		self.__root.iconify()
 	def normalize(self):
 		assert self.__root, "WebView is not started."
-		self.__root.state('normal')
+		self.__root.state("normal")
 
 	@property
 	def is_fullscreen(self):
 		assert self.__root, "WebView is not started."
-		return bool(self.__root.attributes('-fullscreen'))
+		return bool(self.__root.attributes("-fullscreen"))
 	def fullscreen(self):
 		assert self.__root, "WebView is not started."
-		self.__root.attributes('-fullscreen', True)
+		self.__root.attributes("-fullscreen", True)
 	def exit_fullscreen(self):
 		assert self.__root, "WebView is not started."
-		self.__root.attributes('-fullscreen', False)
+		self.__root.attributes("-fullscreen", False)
 
 	def show_open_file_picker(
 		self,

@@ -1,5 +1,5 @@
 from . import webview
 from .webview import WebViewApplication, WebViewConfiguration, WebViewException
-from .handlers import Handlers
+from .notifier import Notifier
 
 def running_application(): return webview.running_application

@@ -1,7 +1,7 @@
 from traceback import print_exception
 from typing import Callable, List
 
-class Handlers:
+class Notifier:
 	def __init__(self):
 		self.__handlers: List[Callable] = []
 
@@ -12,10 +12,10 @@ class Handlers:
 	def remove_handler(self, handler: Callable):
 		self.__handlers.remove(handler)
 
-	def clear(self):
+	def remove_all_handlers(self):
 		self.__handlers = []
 
-	def triggle(self, *args):
+	def trigger(self, *args):
 		for item in self.__handlers:
 			try: item(*args)
 			except Exception as e: print_exception(e)

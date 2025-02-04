@@ -12,7 +12,7 @@ from win32gui import SetParent, MoveWindow, GetParent, SetWindowLong, GetWindowL
 from win32con import GWL_STYLE, WS_CAPTION, WS_THICKFRAME
 
 from .bridge import Bridge, serialize_object
-from .handlers import Handlers
+from .notifier import Notifier
 
 clr.AddReference("System.Windows.Forms") # type: ignore
 clr.AddReference("System.Threading") # type: ignore
@@ -84,7 +84,7 @@ class WebViewApplication:
 		self.__webview: Optional[WebView2] = None
 		self.__webview_hwnd: Optional[int] = None
 		self.__navigate_uri = "about:blank"
-		self.__message_handlers = Handlers()
+		self.__message_handlers = Notifier()
 		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
 
 	def __resize_webview(self, *_):

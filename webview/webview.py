@@ -1,17 +1,11 @@
+from inspect import isfunction, ismethod
+from traceback import print_exception
 import clr
-from json import dumps
 from os import getenv
 from os.path import dirname, join
-from queue import Queue
-from threading import current_thread, main_thread
-from tkinter import Frame, Label, Tk
-from tkinter.filedialog import askdirectory, askopenfilename, asksaveasfile
-from traceback import print_exception
-from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict, Unpack
-from win32gui import SetParent, MoveWindow, GetParent, SetWindowLong, GetWindowLong
-from win32con import GWL_STYLE, WS_CAPTION, WS_THICKFRAME
+from threading import Lock, current_thread, main_thread
+from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 
-from .bridge import Bridge, serialize_object
 from .notifier import Notifier
 
 clr.AddReference("System.Windows.Forms") # type: ignore
@@ -21,301 +15,137 @@ clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ign
 clr.AddReference(join(self_path, "Microsoft.Web.WebView2.WinForms.dll")) # type: ignore
 del self_path
 
-from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState, CoreWebView2HostResourceAccessKind # type: ignore
-from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProperties # type: ignore
-from System import Uri # type: ignore
-from System.Drawing import Color # type: ignore
-from System.Threading import Thread, ApartmentState, ParameterizedThreadStart # type: ignore
-from System.Windows.Forms import AnchorStyles, DockStyle # type: ignore
-
-class WebViewStartParameters(TypedDict, total=False):
-	size: Optional[Tuple[int, int]]
-	position: Optional[Tuple[int, int]]
-	hide: bool
-	borderless: bool
-	background_transparent: bool # not implemented
+from Microsoft.Web.WebView2.WinForms import WebView2 # type: ignore
+from System import Uri
+from System.Drawing import Color, Size # type: ignore
+from System.Threading import Thread as CSharpThread, ApartmentState, ParameterizedThreadStart # type: ignore
+from System.Threading.Tasks import TaskScheduler # type: ignore
+from System.Windows.Forms import Application, ApplicationContext, DockStyle, Form # type: ignore
 
 class WebViewException(Exception):
 	def __init__(self, exception):
 		super().__init__(exception.Message)
 		self.raw = exception
 
-class WebViewConfiguration:
-	def __init__(self,
-			data_folder: str = getenv("TEMP") + "/Microsoft WebView", # type: ignore
-			private_mode = True,
-			debug_enabled = False,
-			user_agent:Optional[str] = None,
-			api: object = None,
-			web_api_permission_bypass: bool = False,
-			vhost_path: Optional[str] = None,
-			vhost_name: str = "webview",
-			vhost_cors: bool = True,
-			min_size: Tuple[int, int] = (384, 256),
-			max_size: Optional[Tuple[int, int]] = None
-		):
-		self.data_folder = data_folder
-		self.private_mode = private_mode
-		self.debug_enabled = debug_enabled
-		self.user_agent = user_agent
-		self.api = api
-		self.web_api_permission_bypass = web_api_permission_bypass
-		self.vhost_path = vhost_path
-		self.vhost_name = vhost_name
-		self.vhost_cors = vhost_cors
-		self.min_size = min_size
-		self.max_size = max_size
+class WebViewVirtualHost:
+	def __init__(self, src_path: str, host_name = "webview", allow_cross_origin = True):
+		self.src_path = src_path,
+		self.host_name = host_name,
+		self.allow_cross_origin = allow_cross_origin,
 
-state_dict={
-	"zoomed": "maximized",
-	"iconic": "minimized",
-	"withdrawn": "hidden",
-	"normal": "normal"
-}
+class WebViewApplicationParameters(TypedDict, total=False):
+	title: str
+	data_folder: str
+	private_mode: bool
+	debug_enabled: bool
+	user_agent: str
+	virtual_hosts: Iterable[WebViewVirtualHost]
+	api: object
+	web_api_permission_bypass: bool
+
+class WebViewGlobalConfiguration:
+	def __init__(self, data: WebViewApplicationParameters):
+		self.title = data.get("title", "WebView Application")
+		self.data_folder = data.get("data_folder", getenv("TEMP") + "/Microsoft WebView") # type: ignore
+		self.private_mode = data.get("private_mode", True)
+		self.debug_enabled = data.get("debug_enabled", False)
+		self.user_agent = data.get("user_agent")
+		self.virtual_hosts = data.get("virtual_hosts")
+		self.api = data.get("api")
+		self.web_api_permission_bypass = data.get("web_api_permission_bypass", False)
+
+_start_lock = Lock()
+
+class WebViewWindowParameters(TypedDict, total=False):
+	initial_uri: str
+	title: str
+	size: Tuple[int, int]
+	position: Tuple[int, int]
+	hide: bool
+	borderless: bool
+	background_color: Color
+	min_size: Tuple[int, int]
+	max_size: Tuple[int, int]
+	private_mode: bool
+	user_agent: str
+	virtual_hosts: Iterable[WebViewVirtualHost]
+	api: object
+	web_api_permission_bypass: bool
 
 class WebViewApplication:
+	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
+		self.__configuration = WebViewGlobalConfiguration(params)
+		self.__task_executor: Optional[TaskScheduler] = None
+		self.__running = False
+		self.__main_window: Optional[WebViewWindow] = None
 
-	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = "WebView Application"):
-		self.__configuration = configuration
-		self.__thread: Optional[Thread] = None
-		self.__title = title
-		self.__root: Optional[Tk] = None
-		self.__frame: Optional[Frame | Label] = None
-		self.__webview: Optional[WebView2] = None
-		self.__webview_hwnd: Optional[int] = None
-		self.__navigate_uri = "about:blank"
-		self.__message_handlers = Notifier()
-		self.__call_queue: Queue[Tuple[Callable, Tuple]] = Queue()
+	@property
+	def main_window(self): return self.__main_window
 
-	def __resize_webview(self, *_):
-		assert self.__root and self.__frame and self.__webview_hwnd
-		frame = self.__frame
-		MoveWindow(self.__webview_hwnd, 0,0, frame.winfo_width(), frame.winfo_height(), False)
-
-	def __call_handler(self, _):
-		queue = self.__call_queue
-		task = queue.get(block=False)
-		queue.task_done()
-		task[0](*task[1])
-
-	def __borderlessfy(self, *_):
-		root = self.__root
-		hwnd = GetParent(root.winfo_id()) # type: ignore
-		SetWindowLong(GetParent(root.winfo_id()), GWL_STYLE, GetWindowLong(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME)) # type: ignore
-		root.unbind("<Map>") # type: ignore
-
-	def __run(self, keywords: WebViewStartParameters):
-		configuration = self.__configuration
-		root = self.__root = Tk()
-		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
-		root.title(self.__title)
-		root.minsize(*configuration.min_size)
-		if configuration.max_size: root.maxsize(*configuration.max_size)
-		size=keywords.get("size")
-		position=keywords.get("position")
-		if size or position: root.geometry((f"{size[0]}x{size[1]}" if size else "") + (f"+{position[0]}+{position[1]}" if position else ""))
-		if keywords.get("hide"): root.withdraw()
-		frame = self.__frame = Frame(root)
-		frame.configure(background="#FFF")
-		frame.pack(fill="both", expand=True)
-		frame_id = frame.winfo_id()
-		webview = self.__webview = WebView2()
-		webview_properties = CoreWebView2CreationProperties()
-		webview_properties.UserDataFolder = configuration.data_folder
-		webview_properties.IsInPrivateModeEnabled = configuration.private_mode
-		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
-		webview.CreationProperties = webview_properties
-		webview.DefaultBackgroundColor = Color.Transparent
-		webview.CoreWebView2InitializationCompleted += self.__on_webview_ready
-		webview.NavigationStarting += self.__on_navigation_start
-		webview.NavigationCompleted += self.__on_navigation_completed
-		webview.WebMessageReceived += self.__on_javascript_message
-		webview.Source = Uri(self.__navigate_uri)
-		webview_handle = self.__webview_hwnd = webview.Handle.ToInt32()
-		SetParent(webview_handle, frame_id)
-		frame.bind("<Configure>", self.__resize_webview)
-		root.bind("<<AppCall>>", self.__call_handler)
-		root.mainloop()
-		self.__root = self.__frame = self.__webview = self.__webview_hwnd = None
-
-	def start(self, uri: Optional[str] = None, **keywords: Unpack[WebViewStartParameters]):
-		global running_application
-		assert (current_thread() is main_thread()), "WebView can start in main thread only."
-		assert not self.__thread, "WebView is already started."
-		if uri: self.__navigate_uri = uri
-		thread = Thread(ParameterizedThreadStart(self.__run))
-		self.__thread = thread
-		thread.SetApartmentState(ApartmentState.STA)
-		thread.Start(keywords)
-		running_application = self
-		thread.Join()
-		running_application = self.__thread = None
+	def create_window(self, **params: Unpack[WebViewWindowParameters]):
+		return WebViewWindow(self.__configuration, params)
 
 	def stop(self):
-		assert self.__root, "WebView is not started."
-		self.__root.quit()
+		Application.Exit()
 
-	def __on_new_window_request(self, _, args):
-		args.set_Handled(True)
+	def __start(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
+		_start_lock.release()
+		self.__running = True
+		[main, options] = params
+		if main:
+			try: main(self)
+			except Exception as e:
+				print_exception(e)
+				return
+		else:
+			self.__main_window = self.create_window(**options)
+		Application.Run(ApplicationContext())
 
-	def __on_webview_ready(self, webview_instance, args):
-		if not args.IsSuccess:
-			print_exception(WebViewException(args.InitializationException))
-			return
-		configuration = self.__configuration
-		core = webview_instance.CoreWebView2
-		core.NewWindowRequested += self.__on_new_window_request
-		if configuration.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
-		Bridge(core, self.__configuration.api)
-		debug_enabled = configuration.debug_enabled
-		settings = core.Settings
-		settings.AreBrowserAcceleratorKeysEnabled = settings.AreDefaultContextMenusEnabled = settings.AreDevToolsEnabled = debug_enabled
-		settings.AreDefaultScriptDialogsEnabled = True
-		settings.IsBuiltInErrorPageEnabled = True
-		settings.IsScriptEnabled = True
-		settings.IsWebMessageEnabled = True
-		settings.IsStatusBarEnabled = False
-		settings.IsSwipeNavigationEnabled = False
-		settings.IsZoomControlEnabled = False
+	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):
+		global _running_application
+		_start_lock.acquire()
+		try:
+			assert main is None or isfunction(main) or ismethod(main), "Argument 'main' is not a valid callable object."
+			assert (current_thread() is main_thread()), "WebViewApplication can start in main thread only."
+			assert not self.__running, "WebViewApplication is already started."
+			assert not _running_application, "A WebViewApplication is already running."
+		except AssertionError as e:
+			_start_lock.release()
+			raise e
+		_running_application = self
+		thread = CSharpThread(ParameterizedThreadStart(self.__start))
+		thread.SetApartmentState(ApartmentState.STA)
+		thread.Start((main, params))
+		thread.Join()
+		with _start_lock:
+			self.__running = False
+			_running_application = None
 
-		ua = configuration.user_agent
-		if ua: settings.UserAgent = ua
+class WebViewWindow:
+	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
+		self.__message_notifier = Notifier()
+		window = self.__window = Form()
+		window.Text = params.get("title", global_configuration.title)
+		window.Size = Size(300, 300)
 
-		vhost = configuration.vhost_path
-		if vhost: core.SetVirtualHostNameToFolderMapping(configuration.vhost_name, vhost, CoreWebView2HostResourceAccessKind.DenyCors if configuration.vhost_cors else CoreWebView2HostResourceAccessKind.Deny)
+		self.__webview: WebView2
+		webview = self.__webview = WebView2()
+		webview.Dock = DockStyle.Fill
+		webview.Source = Uri(initial_uri)
+		window.Controls.Add(webview)
+		
+		self.__webview_hwnd: Optional[int] = None
+		
+		window.Show()
+		# private_mode = True,
+		# user_agent:Optional[str] = None,
+		# virtual_hosts: Optional[Iterable[WebViewVirtualHost]] = None,
+		# api: object = None,
+		# web_api_permission_bypass: bool = False,
+		# min_size: Tuple[int, int] = (384, 256),
+		# max_size: Optional[Tuple[int, int]] = None
 
-		# cookies persist even if UserDataFolder is in memory. We have to delete cookies manually.
-		if configuration.private_mode: core.CookieManager.DeleteAllCookies()
-
-		if debug_enabled: core.OpenDevToolsWindow()
-
-	def __on_navigation_start(self, _, args):
-		print("Webview navigation started: " + args.Uri)
-
-	def __on_navigation_completed(self, _, args):
-		print("Webview navigation completed, status: " + str(args.HttpStatusCode))
-
-	def __on_permission_requested(self, _, args):
-		args.State = CoreWebView2PermissionState.Allow
-
-	def __on_javascript_message(self, _, args):
-		self.__message_handlers.triggle(args.WebMessageAsJson, args.AdditionalObjects)
-
-	def __cross_thread_call(self, function: Callable, *args):
-		assert self.__root, "WebView is not started."
-		self.__call_queue.put((function, args), block=False)
-		self.__root.event_generate("<<AppCall>>")
-
-	def __navigate_to(self, uri: str):
-		assert self.__webview, "WebView is not started."
-		self.__webview.Source = Uri(uri)
-	@property
-	def navigate_uri(self): return self.__navigate_uri
-	@navigate_uri.setter
-	def navigate_uri(self, value):
-		self.__navigate_uri = value
-		if self.__webview: self.__cross_thread_call(self.__navigate_to, value)
-
-	def __post_message(self, message: str):
-		assert self.__webview, "WebView is not started."
-		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
-	def post_message(self, message: Any):
-		self.__cross_thread_call(self.__post_message, dumps(message, ensure_ascii=False, default=serialize_object))
-	
-	def __execute_javascript(self, script: str):
-		assert self.__webview, "WebView is not started."
-		self.__webview.CoreWebView2.ExecuteScriptAsync(script)
-	def execute_javascript(self, script: str):
-		self.__cross_thread_call(self.__execute_javascript, script)
-
-	@property
-	def message_handlers(self): return self.__message_handlers
-
-	@property
-	def size(self):
-		root = self.__root
-		assert root, "WebView is not started."
-		return root.winfo_width(), root.winfo_height()
-	def resize(self, width:int, height:int):
-		assert self.__root, "WebView is not started."
-		self.__root.geometry(f"{width}x{height}")
-
-	@property
-	def position(self):
-		root = self.__root
-		assert root, "WebView is not started."
-		return root.winfo_x(), root.winfo_y()
-	def move(self, x:int, y:int):
-		assert self.__root, "WebView is not started."
-		self.__root.geometry(f"+{x}+{y}")
-
-	@property
-	def state(self):
-		assert self.__root, "WebView is not started."
-		return state_dict.get(self.__root.state(), "unknown")
-	def show(self):
-		assert self.__root, "WebView is not started."
-		self.__root.deiconify()
-	def hide(self):
-		assert self.__root, "WebView is not started."
-		self.__root.withdraw()
-	def maximize(self):
-		assert self.__root, "WebView is not started."
-		self.__root.state("zoomed")
-	def minimize(self):
-		assert self.__root, "WebView is not started."
-		self.__root.iconify()
-	def normalize(self):
-		assert self.__root, "WebView is not started."
-		self.__root.state("normal")
-
-	@property
-	def is_fullscreen(self):
-		assert self.__root, "WebView is not started."
-		return bool(self.__root.attributes("-fullscreen"))
-	def fullscreen(self):
-		assert self.__root, "WebView is not started."
-		self.__root.attributes("-fullscreen", True)
-	def exit_fullscreen(self):
-		assert self.__root, "WebView is not started."
-		self.__root.attributes("-fullscreen", False)
-
-	def show_open_file_picker(
-		self,
-		multiple: bool = True,
-		initial_directory: Optional[str] = None,
-		initial_file_name: Optional[str] = None,
-		title: Optional[str] = None,
-		file_types: Iterable[Tuple[str, str | List[str] | Tuple[str, ...]]] = [],
-	) -> Tuple[str, ...] | None:
-		result=askopenfilename(
-			parent=self.__root,
-			multiple=multiple, # type: ignore
-			initialdir=initial_directory,
-			initialfile=initial_file_name,
-			title=title,
-			filetypes=file_types
-		)
-		if not result: return None
-		return (result,) if not multiple else result
-	def show_save_file_picker(
-		self,
-		overwrite: bool = False,
-		binary: bool = False,
-		initial_directory: Optional[str] = None,
-		initial_file_name: Optional[str] = None,
-		title: Optional[str] = None,
-		file_types: Iterable[Tuple[str, str | List[str] | Tuple[str, ...]]] = [("all", "*")],
-	):
-		return asksaveasfile(
-			mode=("w+" if overwrite else "a+") + ("b" if binary else ""),
-			parent=self.__root,
-			initialdir=initial_directory,
-			initialfile=initial_file_name,
-			title=title,
-			filetypes=file_types
-		)
-	def show_directory_picker(self, initial_directory: Optional[str] = None, title: Optional[str] = None ) -> str | None:
-		return askdirectory(parent=self.__root, initialdir=initial_directory, title=title, mustexist=True)
-
-running_application: Optional[WebViewApplication] = None
+_running_application: Optional[WebViewApplication] = None
+def get_running_application():
+	with _start_lock: return _running_application

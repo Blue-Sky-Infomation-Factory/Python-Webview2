@@ -1,5 +1,2 @@
-from . import webview
-from .webview import WebViewApplication, WebViewConfiguration, WebViewException
+from .webview import WebViewApplication, WebViewGlobalConfiguration, WebViewException, get_running_application
 from .notifier import Notifier
-
-def running_application(): return webview.running_application

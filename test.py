@@ -1,6 +1,17 @@
-from webview import WebViewApplication
-from webview.webview import WebViewConfiguration
+from threading import Thread
+from time import sleep
+from webview import WebViewApplication, get_running_application
 
-app = WebViewApplication(WebViewConfiguration(debug_enabled=True), "test")
+app = WebViewApplication(debug_enabled=True, title="test")
 
-app.start(borderless=True)
+def main():
+	sleep(10)
+	print(get_running_application())
+
+
+
+Thread(target=main).start()
+
+
+
+app.start()

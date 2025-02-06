@@ -122,7 +122,7 @@ class WebViewApplication:
 		webview = self.__webview = WebView2()
 		webview_properties = CoreWebView2CreationProperties()
 		webview_properties.UserDataFolder = configuration.data_folder
-		webview_properties.set_IsInPrivateModeEnabled(configuration.private_mode)
+		webview_properties.IsInPrivateModeEnabled = configuration.private_mode
 		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
 		webview.CreationProperties = webview_properties
 		webview.DefaultBackgroundColor = Color.Transparent
@@ -145,7 +145,7 @@ class WebViewApplication:
 		if uri: self.__navigate_uri = uri
 		thread = Thread(ParameterizedThreadStart(self.__run))
 		self.__thread = thread
-		thread.ApartmentState = ApartmentState.STA
+		thread.SetApartmentState(ApartmentState.STA)
 		thread.Start(keywords)
 		running_application = self
 		thread.Join()

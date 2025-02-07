@@ -1,4 +1,9 @@
 {
 	"python.analysis.autoImportCompletions": true,
-	"python.analysis.typeCheckingMode": "basic"
+	"python.analysis.typeCheckingMode": "basic",
+	"python.analysis.extraPaths": [
+			"..\\python-utils",
+			"..\\pythonnet-stubs\\pythonnet_stubs",
+			"..\\python-microsoft-webview2-stubs\\src"
+		]
 }

@@ -26,7 +26,7 @@ from System import Uri
 from System.Drawing import Color, Size # type: ignore
 from System.Threading import Thread as CSharpThread, ApartmentState, ParameterizedThreadStart # type: ignore
 from System.Threading.Tasks import TaskScheduler # type: ignore
-from System.Windows.Forms import Application, ApplicationContext, DockStyle, Form # type: ignore
+from System.Windows.Forms import Application, ApplicationContext, CloseReason, DockStyle, Form, FormClosedEventArgs # type: ignore
 
 def method_bind(method: Callable, *bind_args, **bind_kargs):
 	return lambda *args: method(*bind_args, *args, **bind_kargs)
@@ -38,8 +38,8 @@ class WebViewException(Exception):
 
 class WebViewVirtualHost:
 	def __init__(self, src_path: str, host_name = "webview", allow_cross_origin = True):
-		self.src_path = src_path,
-		self.host_name = host_name,
+		self.src_path = src_path
+		self.host_name = host_name
 		self.allow_cross_origin = allow_cross_origin,
 
 class WebViewApplicationParameters(TypedDict, total=False):
@@ -93,7 +93,7 @@ class WebViewApplication:
 	def main_window(self): return self.__main_window
 
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
-		return WebViewWindow(self.__configuration, params)
+		return WebViewWindow(self, self.__configuration, params)
 
 	def stop(self):
 		with _start_lock:
@@ -142,8 +142,32 @@ class WebViewWindowInitializeParameters:
 		self.web_api_permission_bypass = params.get("web_api_permission_bypass", global_configuration.web_api_permission_bypass)
 
 class WebViewWindow:
-	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+	@property
+	def on_closed(self): return self.__on_closed
+	@property
+	def exit_on_close(self): return self.__exit_on_close
+	@exit_on_close.setter
+	def exit_on_close(self, value: bool):
+		self.__exit_on_close = bool(value)
+	def __on_close_handler(self, *_):
+		if self.__exit_on_close: self.__application.stop()
+
+	@property
+	def navigate_uri(self): return self.__navigate_uri
+	@navigate_uri.setter
+	def navigate_uri(self, value: str):
+		self.__webview.Source = Uri(value)
+		self.__navigate_uri = value
+
+	def __init__(self, application: WebViewApplication, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+		self.__application = application
+		self.__on_closed: Notifier[Self, CloseReason]
+		on_closed = self.__on_closed = Notifier()
+		on_closed.add_handler(self.__on_close_handler)
+		self.__exit_on_close = params.get("exit_on_close", False)
+
 		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
+
 		self.__message_notifier = Notifier()
 		window = self.__window = Form()
 		window.Text = params.get("title", global_configuration.title)
@@ -166,7 +190,7 @@ class WebViewWindow:
 
 		webview.Source = Uri(initial_uri)
 		window.Controls.Add(webview)
-		
+		window.Closed += self.__on_window_closed
 		self.__webview_hwnd: Optional[int] = None
 		
 		window.Show()
@@ -178,6 +202,9 @@ class WebViewWindow:
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None
 
+	def __on_window_closed(self, _: Form, args: FormClosedEventArgs):
+		self.__on_closed.trigger(self, args.CloseReason)
+
 	def __on_new_window_request(self, _, args):
 		args.set_Handled(True)
 
@@ -188,8 +215,8 @@ class WebViewWindow:
 		if not args.IsSuccess:
 			print_exception(WebViewException(args.InitializationException))
 			return
-		print(init_params, webview, args)
 		core = webview.CoreWebView2
+		assert core
 		core.NewWindowRequested += self.__on_new_window_request
 		if init_params.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
 		Bridge(core, self.__api)
@@ -210,6 +237,7 @@ class WebViewWindow:
 		vhosts = init_params.virtual_hosts
 		if vhosts:
 			for host in vhosts:
+				host.host_name
 				core.SetVirtualHostNameToFolderMapping(
 					host.host_name, host.src_path,
 					CoreWebView2HostResourceAccessKind.DenyCors if host.allow_cross_origin else CoreWebView2HostResourceAccessKind.Deny

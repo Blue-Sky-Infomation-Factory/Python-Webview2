@@ -12,7 +12,7 @@ setup(
 	long_description_content_type="text/markdown",
 	packages=find_packages(),
 	package_data={
-		"bsif_webview": [
+		"bsif.webview": [
 			"bridge.js",
 			"*.dll",
 			"runtimes/*/native/WebView2Loader.dll"

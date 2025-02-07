@@ -21,15 +21,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install flake8 twine setuptools
+        python -m pip install flake8 twine build
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - name: Build wheel
       run: |
-        python setup.py bdist_wheel --python-tag cp311 --plat-name win_amd64
-        python setup.py bdist_wheel --python-tag cp312 --plat-name win_amd64
+        python -m build -w -C--build-option="--python-tag" -C--build-option="cp311" -C--build-option="--plat-name" -C--build-option="win_amd64"
+        python -m build -w -C--build-option="--python-tag" -C--build-option="cp312" -C--build-option="--plat-name" -C--build-option="win_amd64"
+        python -m build -s
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:

@@ -6,6 +6,7 @@
 	],
 	"settings": {
 		"python.analysis.extraPaths": [
+			"..\\python-util",
 			"..\\pythonnet-stubs\\pythonnet_stubs",
 			"..\\python-microsoft-webview2-stubs\\src"
 		]

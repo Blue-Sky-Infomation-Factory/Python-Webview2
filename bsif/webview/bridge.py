@@ -8,10 +8,12 @@ from os.path import dirname, join
 from typing import Any, Callable, Dict
 
 self_path = dirname(__file__)
+# clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ignore
 clr.AddReference(join(self_path, 'BSIF.WebView2Bridge.dll')) # type: ignore
-with open(self_path + "/bridge.js") as file: bridge_script = file.read()
+with open(join(self_path, "bridge.js")) as file: bridge_script = file.read()
 del self_path
 
+from Microsoft.Web.WebView2.Core import CoreWebView2 # type: ignore
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 
 def serialize_object(object: object): return object.__dict__
@@ -44,7 +46,7 @@ def async_call_thread(function: Callable, args_json: str, async_object ):
 		print_exception(error)
 
 class Bridge:
-	def __init__(self, core, api: object):
+	def __init__(self, core: CoreWebView2, api: object):
 		api = self.__api = (pick_dictionary_methods if type(api) is dict else pick_methods)(api) # type: ignore
 		core.AddScriptToExecuteOnDocumentCreatedAsync(bridge_script)
 		core.AddHostObjectToScript("bridge", WebView2Bridge(

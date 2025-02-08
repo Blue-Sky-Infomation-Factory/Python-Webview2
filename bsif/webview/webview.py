@@ -1,3 +1,4 @@
+from bsif.utils.notifier import Notifier
 from inspect import isfunction, ismethod
 from traceback import print_exception
 import clr
@@ -6,9 +7,6 @@ from os.path import dirname, join
 from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 
-from .bridge import Bridge, serialize_object
-from bsif.utils.notifier import Notifier
-
 clr.AddReference("System.Windows.Forms") # type: ignore
 clr.AddReference("System.Threading") # type: ignore
 self_path = dirname(__file__)
@@ -16,10 +14,15 @@ clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ign
 clr.AddReference(join(self_path, "Microsoft.Web.WebView2.WinForms.dll")) # type: ignore
 del self_path
 
+from .bridge import Bridge, serialize_object
+
 from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2HostResourceAccessKind,
+	CoreWebView2NewWindowRequestedEventArgs,
 	CoreWebView2InitializationCompletedEventArgs,
-	CoreWebView2PermissionState
+	CoreWebView2PermissionRequestedEventArgs,
+	CoreWebView2PermissionState,
+	CoreWebView2
 )
 from Microsoft.Web.WebView2.WinForms import CoreWebView2CreationProperties, WebView2 # type: ignore
 from System import Uri
@@ -55,7 +58,7 @@ class WebViewApplicationParameters(TypedDict, total=False):
 class WebViewGlobalConfiguration:
 	def __init__(self, data: WebViewApplicationParameters):
 		self.title = data.get("title", "WebView Application")
-		self.data_folder = data.get("data_folder", getenv("TEMP") + "/Microsoft WebView") # type: ignore
+		self.data_folder = data.get("data_folder", getenv("TEMP", ".") + "/Microsoft WebView")
 		self.private_mode = data.get("private_mode", True)
 		self.debug_enabled = data.get("debug_enabled", False)
 		self.user_agent = data.get("user_agent")
@@ -63,7 +66,7 @@ class WebViewGlobalConfiguration:
 		self.api = data.get("api")
 		self.web_api_permission_bypass = data.get("web_api_permission_bypass", False)
 
-_start_lock = Lock()
+_state_lock = Lock()
 
 class WebViewWindowParameters(TypedDict, total=False):
 	initial_uri: str
@@ -96,11 +99,11 @@ class WebViewApplication:
 		return WebViewWindow(self, self.__configuration, params)
 
 	def stop(self):
-		with _start_lock:
+		with _state_lock:
 			if self.__running: Application.Exit()
 
 	def __start(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
-		_start_lock.release()
+		_state_lock.release()
 		self.__running = True
 		[main, options] = params
 		if main:
@@ -115,28 +118,28 @@ class WebViewApplication:
 
 	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):
 		global _running_application
-		_start_lock.acquire()
+		_state_lock.acquire()
 		try:
 			assert main is None or isfunction(main) or ismethod(main), "Argument 'main' is not a valid callable object."
 			assert (current_thread() is main_thread()), "WebViewApplication can start in main thread only."
 			assert not self.__running, "WebViewApplication is already started."
 			assert not _running_application, "A WebViewApplication is already running."
 		except AssertionError as e:
-			_start_lock.release()
+			_state_lock.release()
 			raise e
 		_running_application = self
 		thread = CSharpThread(ParameterizedThreadStart(self.__start))
 		thread.SetApartmentState(ApartmentState.STA)
 		thread.Start((main, params))
 		thread.Join()
-		with _start_lock:
+		with _state_lock:
 			self.__running = False
 			_running_application = None
 
 class WebViewWindowInitializeParameters:
 	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.debug_enabled = global_configuration.debug_enabled
-		self.private_mode = params.get("private_mode", global_configuration.private_mode)
+		# self.private_mode = params.get("private_mode", global_configuration.private_mode)
 		self.user_agent = params.get("user_agent", global_configuration.user_agent)
 		self.virtual_hosts = params.get("virtual_hosts", global_configuration.virtual_hosts)
 		self.web_api_permission_bypass = params.get("web_api_permission_bypass", global_configuration.web_api_permission_bypass)
@@ -166,9 +169,6 @@ class WebViewWindow:
 		on_closed.add_handler(self.__on_close_handler)
 		self.__exit_on_close = params.get("exit_on_close", False)
 
-		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
-
-		self.__message_notifier = Notifier()
 		window = self.__window = Form()
 		window.Text = params.get("title", global_configuration.title)
 		window.Size = Size(300, 300)
@@ -178,21 +178,24 @@ class WebViewWindow:
 		self.__webview: WebView2
 		webview = self.__webview = WebView2()
 		webview_properties = CoreWebView2CreationProperties()
-		webview_properties.IsInPrivateModeEnabled = init_params.private_mode
+		webview_properties.IsInPrivateModeEnabled = params.get("private_mode", global_configuration.private_mode)
 		webview_properties.UserDataFolder = global_configuration.data_folder
 		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
 		webview.CreationProperties = webview_properties
 		webview.DefaultBackgroundColor = Color.White
 		webview.Dock = DockStyle.Fill
 		self.__api = params.get("api", global_configuration.api)
+
 		webview.CoreWebView2InitializationCompleted += method_bind(self.__on_webview_ready, init_params)
-
-
+		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
 		webview.Source = Uri(initial_uri)
+
 		window.Controls.Add(webview)
 		window.Closed += self.__on_window_closed
 		self.__webview_hwnd: Optional[int] = None
 		
+		self.__message_notifier = Notifier()
+
 		window.Show()
 		# private_mode = True,
 		# user_agent:Optional[str] = None,
@@ -205,10 +208,10 @@ class WebViewWindow:
 	def __on_window_closed(self, _: Form, args: FormClosedEventArgs):
 		self.__on_closed.trigger(self, args.CloseReason)
 
-	def __on_new_window_request(self, _, args):
-		args.set_Handled(True)
+	def __on_new_window_request(self, _: CoreWebView2, args: CoreWebView2NewWindowRequestedEventArgs):
+		args.Handled = True
 
-	def __on_permission_requested(self, _, args):
+	def __on_permission_requested(self, _: CoreWebView2, args: CoreWebView2PermissionRequestedEventArgs):
 		args.State = CoreWebView2PermissionState.Allow
 
 	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2, args: CoreWebView2InitializationCompletedEventArgs):
@@ -244,10 +247,10 @@ class WebViewWindow:
 				)
 
 		# cookies persist even if UserDataFolder is in memory. We have to delete cookies manually.
-		if init_params.private_mode: core.CookieManager.DeleteAllCookies()
+		# if init_params.private_mode: core.CookieManager.DeleteAllCookies()
 
 		if debug_enabled: core.OpenDevToolsWindow()
 
 _running_application: Optional[WebViewApplication] = None
 def get_running_application():
-	with _start_lock: return _running_application
+	with _state_lock: return _running_application

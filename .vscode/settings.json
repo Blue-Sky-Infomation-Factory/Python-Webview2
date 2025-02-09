@@ -4,6 +4,7 @@
 	"python.analysis.extraPaths": [
 			"..\\python-utils",
 			"..\\pythonnet-stubs\\pythonnet_stubs",
-			"..\\python-microsoft-webview2-stubs\\src"
+			"..\\python-microsoft-webview2-stubs\\src",
+			"..\\Python-Webview2-Bridge\\stubs"
 		]
 }

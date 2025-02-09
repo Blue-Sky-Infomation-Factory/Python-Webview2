@@ -246,9 +246,6 @@ class WebViewWindow:
 					CoreWebView2HostResourceAccessKind.DenyCors if host.allow_cross_origin else CoreWebView2HostResourceAccessKind.Deny
 				)
 
-		# cookies persist even if UserDataFolder is in memory. We have to delete cookies manually.
-		# if init_params.private_mode: core.CookieManager.DeleteAllCookies()
-
 		if debug_enabled: core.OpenDevToolsWindow()
 
 _running_application: Optional[WebViewApplication] = None

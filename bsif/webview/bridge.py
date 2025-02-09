@@ -8,11 +8,11 @@ from os.path import dirname, join
 from typing import Any, Callable, Dict
 
 self_path = dirname(__file__)
-# clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ignore
 clr.AddReference(join(self_path, 'BSIF.WebView2Bridge.dll')) # type: ignore
 with open(join(self_path, "bridge.js")) as file: bridge_script = file.read()
 del self_path
 
+from System.Threading.Tasks import TaskCompletionSource # type: ignore
 from Microsoft.Web.WebView2.Core import CoreWebView2 # type: ignore
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 
@@ -32,7 +32,7 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 		if ismethod(value) or isfunction(value) or isbuiltin(value): methods[key] = value
 	return methods
 
-def async_call_thread(function: Callable, args_json: str, async_object ):
+def async_call_thread(function: Callable, args_json: str, async_object: TaskCompletionSource):
 	try:
 		result=function(*loads(args_json))
 		if (iscoroutine(result)): result=get_event_loop().run_until_complete(result)

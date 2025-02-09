@@ -5,7 +5,7 @@
 		webview = chrome.webview,
 		{
 			sync: {
-				bridge: { SyncCall: syncCall, methodNames }
+				bridge: { SyncCall: syncCall, MethodNames: methodNames }
 			},
 			bridge: { AsyncCall: asyncCall }
 		} = webview.hostObjects,

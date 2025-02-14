@@ -119,9 +119,7 @@ class WebViewApplication:
 			return package[1]
 
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
-		with _state_lock:
-			if not self.__running: raise RuntimeError("Application is not running.")
-			return self.__cross_thread_call(WebViewWindow, (self, self.__cross_thread_call, self.__configuration, params))
+		return self.__cross_thread_call(WebViewWindow, (self, self.__cross_thread_call, self.__configuration, params))
 
 	def stop(self):
 		with _state_lock:
@@ -138,7 +136,7 @@ class WebViewApplication:
 			except Exception as e:
 				print_exception(e)
 				return
-		else: self.__main_window = WebViewWindow(self, self.__cross_thread_call, self.__configuration, options)
+		else: self.__main_window = self.create_window(**options)
 		Application.Run()
 
 	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):

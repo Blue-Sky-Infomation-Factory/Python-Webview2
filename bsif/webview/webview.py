@@ -1,4 +1,3 @@
-from asyncio import new_event_loop, set_event_loop
 from bsif.utils.notifier import Notifier
 from inspect import isfunction, ismethod
 from traceback import print_exception
@@ -31,7 +30,7 @@ from Microsoft.Web.WebView2.WinForms import CoreWebView2CreationProperties, WebV
 from System import Exception as CSException, Uri
 from System.Drawing import Color, Size # type: ignore
 from System.Threading import ApartmentState, SendOrPostCallback, Thread as CSharpThread, ParameterizedThreadStart # type: ignore
-from System.Windows.Forms import Application, ApplicationContext, CloseReason, DockStyle, Form, FormClosedEventArgs, WindowsFormsSynchronizationContext # type: ignore
+from System.Windows.Forms import Application, CloseReason, DockStyle, Form, FormClosedEventArgs, WindowsFormsSynchronizationContext # type: ignore
 
 Application.EnableVisualStyles()
 Application.SetCompatibleTextRenderingDefault(True)
@@ -87,7 +86,8 @@ class WebViewWindowParameters(TypedDict, total=False):
 	api: object
 	web_api_permission_bypass: bool
 
-_cross_thread_executor = SendOrPostCallback(lambda params: params[0](*params[1]))
+def _cross_thread_executor(params): params[1] = params[0](*params[1])
+_cross_thread_caller = SendOrPostCallback(_cross_thread_executor)
 
 class WebViewApplication:
 	@property
@@ -110,17 +110,18 @@ class WebViewApplication:
 		self.__sync_context: Optional[WindowsFormsSynchronizationContext] = None
 		self.__stop_at_main_window_closed = params.get("stop_at_main_window_closed", True)
 		self.__main_window: Optional[WebViewWindow] = None
-		self.__app_context = ApplicationContext()
 
-	def cross_thread_call(self, method: Callable, args: Tuple):
+	def __cross_thread_call(self, method: Callable, args: Tuple):
 		with _state_lock:
 			if not self.__running: raise RuntimeError("Application is not running.")
-			self.__sync_context.Send(_cross_thread_executor, (method, args)) # type: ignore
+			package = [method, args]
+			self.__sync_context.Send(_cross_thread_caller, package) # type: ignore
+			return package[1]
 
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
 		with _state_lock:
 			if not self.__running: raise RuntimeError("Application is not running.")
-			return WebViewWindow(self, self.__sync_context, self.__configuration, params) # type: ignore
+			return self.__cross_thread_call(WebViewWindow, (self, self.__cross_thread_call, self.__configuration, params))
 
 	def stop(self):
 		with _state_lock:
@@ -130,7 +131,6 @@ class WebViewApplication:
 		self.__running = True
 		sync_context = self.__sync_context = WindowsFormsSynchronizationContext()
 		WindowsFormsSynchronizationContext.SetSynchronizationContext(sync_context)
-		set_event_loop(new_event_loop())
 		_state_lock.release()
 		[main, options] = params
 		if main:
@@ -138,8 +138,8 @@ class WebViewApplication:
 			except Exception as e:
 				print_exception(e)
 				return
-		else: self.__main_window = self.create_window(**options)
-		Application.Run(self.__app_context)
+		else: self.__main_window = WebViewWindow(self, self.__cross_thread_call, self.__configuration, options)
+		Application.Run()
 
 	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):
 		global _running_application
@@ -159,8 +159,7 @@ class WebViewApplication:
 		thread.Join()
 		with _state_lock:
 			self.__running = False
-			self.__sync_context = None
-			_running_application = None
+			_running_application = self.__sync_context = None
 
 class WebViewWindowInitializeParameters:
 	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
@@ -178,15 +177,16 @@ class WebViewWindow:
 
 	@property
 	def navigate_uri(self): return self.__navigate_uri
+	def __navigate_uri_call(self, value): self.__webview.Source = Uri(value)
 	@navigate_uri.setter
 	def navigate_uri(self, value: str):
-		self.__webview.Source = Uri(value)
+		self.__cross_thread_call(self.__navigate_uri_call, (value,))
 		self.__navigate_uri = value
 
-	def __init__(self, app: WebViewApplication, sync_context: WindowsFormsSynchronizationContext, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+	def __init__(self, app: WebViewApplication, cross_thread_caller: Callable[[Callable, Tuple], None], configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.__closed = False
 		self.__application = app
-		self.__sync_context = sync_context
+		self.__cross_thread_caller = cross_thread_caller
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self, CloseReason]()
 
@@ -220,11 +220,15 @@ class WebViewWindow:
 		if not params.get("hide"): window.Show()
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None
+	
+	def __cross_thread_call(self, method: Callable, args: Tuple):
+		if self.__closed: raise RuntimeError("Window is closed.")
+		return self.__cross_thread_caller(method, args) # type: ignore
 
 	def __on_window_closed(self, _: Form, args: FormClosedEventArgs):
 		self.__closed = True
 		app = self.__application
-		self.__sync_context = None
+		self.__cross_thread_caller = None
 		if self is app.main_window:
 			app.main_window = None
 			if app.stop_at_main_window_closed: app.stop()

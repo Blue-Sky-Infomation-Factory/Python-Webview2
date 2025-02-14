@@ -1,20 +1,16 @@
-import code
-from threading import Thread, current_thread
-from time import sleep
+from threading import Thread
+from time import sleep, time
 from bsif.webview import WebViewApplication, get_running_application
 
-import webview
-
-def test(a):
-	print(a)
-	app.main_window.navigate_uri = a # type: ignore
 
 def emulator():
 	print("sleep for 5s")
 	sleep(5)
 	print("moving")
 	app = get_running_application()
-	app.cross_thread_call(test, ("https://bspr0002.github.io/",)) # type: ignore
+	s = time()
+	app.main_window.navigate_uri = "https://bspr0002.github.io/"  # type: ignore
+	print(f"done: {time()-s}s")
 
 Thread(target=emulator, daemon=True).start()
 # Thread(target=code.interact, daemon=True).start()

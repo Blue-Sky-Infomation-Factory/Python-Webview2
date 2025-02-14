@@ -1,3 +1,4 @@
+from asyncio import new_event_loop, set_event_loop
 from bsif.utils.notifier import Notifier
 from inspect import isfunction, ismethod
 from traceback import print_exception
@@ -7,17 +8,19 @@ from os.path import dirname, join
 from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 
-clr.AddReference("System.Windows.Forms") # type: ignore
-clr.AddReference("System.Threading") # type: ignore
+clr.AddReference("System.Threading")
+clr.AddReference("System.Windows.Forms")
 self_path = dirname(__file__)
-clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll")) # type: ignore
-clr.AddReference(join(self_path, "Microsoft.Web.WebView2.WinForms.dll")) # type: ignore
+clr.AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll"))
+clr.AddReference(join(self_path, "Microsoft.Web.WebView2.WinForms.dll"))
 del self_path
 
-from .bridge import Bridge, serialize_object
+from .bridge import Bridge
 
 from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2HostResourceAccessKind,
+	CoreWebView2NavigationCompletedEventArgs,
+	CoreWebView2NavigationStartingEventArgs,
 	CoreWebView2NewWindowRequestedEventArgs,
 	CoreWebView2InitializationCompletedEventArgs,
 	CoreWebView2PermissionRequestedEventArgs,
@@ -25,17 +28,16 @@ from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2
 )
 from Microsoft.Web.WebView2.WinForms import CoreWebView2CreationProperties, WebView2 # type: ignore
-from System import Uri
+from System import Exception as CSException, Uri
 from System.Drawing import Color, Size # type: ignore
-from System.Threading import Thread as CSharpThread, ApartmentState, ParameterizedThreadStart # type: ignore
-from System.Threading.Tasks import TaskScheduler # type: ignore
-from System.Windows.Forms import Application, ApplicationContext, CloseReason, DockStyle, Form, FormClosedEventArgs # type: ignore
+from System.Threading import ApartmentState, SendOrPostCallback, Thread as CSharpThread, ParameterizedThreadStart # type: ignore
+from System.Windows.Forms import Application, ApplicationContext, CloseReason, DockStyle, Form, FormClosedEventArgs, WindowsFormsSynchronizationContext # type: ignore
 
-def method_bind(method: Callable, *bind_args, **bind_kargs):
-	return lambda *args: method(*bind_args, *args, **bind_kargs)
+Application.EnableVisualStyles()
+Application.SetCompatibleTextRenderingDefault(True)
 
 class WebViewException(Exception):
-	def __init__(self, exception):
+	def __init__(self, exception: CSException):
 		super().__init__(exception.Message)
 		self.raw = exception
 
@@ -54,6 +56,7 @@ class WebViewApplicationParameters(TypedDict, total=False):
 	virtual_hosts: Iterable[WebViewVirtualHost]
 	api: object
 	web_api_permission_bypass: bool
+	stop_at_main_window_closed: bool
 
 class WebViewGlobalConfiguration:
 	def __init__(self, data: WebViewApplicationParameters):
@@ -83,47 +86,69 @@ class WebViewWindowParameters(TypedDict, total=False):
 	virtual_hosts: Iterable[WebViewVirtualHost]
 	api: object
 	web_api_permission_bypass: bool
-	exit_on_close: bool
+
+_cross_thread_executor = SendOrPostCallback(lambda params: params[0](*params[1]))
 
 class WebViewApplication:
-	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
-		self.__configuration = WebViewGlobalConfiguration(params)
-		self.__task_executor: Optional[TaskScheduler] = None
-		self.__running = False
-		self.__main_window: Optional[WebViewWindow] = None
+	@property
+	def stop_at_main_window_closed(self): return self.__stop_at_main_window_closed
+	@stop_at_main_window_closed.setter
+	def stop_at_main_window_closed(self, value: bool):
+		self.__stop_at_main_window_closed = bool(value)
 
 	@property
 	def main_window(self): return self.__main_window
+	@main_window.setter
+	def main_window(self, value):
+		if value is not None and not isinstance(value, WebViewWindow): raise TypeError("Not a WebViewWindow")
+		if value and value.closed: raise ValueError("Cannot set a closed window as main window")
+		self.__main_window = value
+
+	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
+		self.__configuration = WebViewGlobalConfiguration(params)
+		self.__running = False
+		self.__sync_context: Optional[WindowsFormsSynchronizationContext] = None
+		self.__stop_at_main_window_closed = params.get("stop_at_main_window_closed", True)
+		self.__main_window: Optional[WebViewWindow] = None
+		self.__app_context = ApplicationContext()
+
+	def cross_thread_call(self, method: Callable, args: Tuple):
+		with _state_lock:
+			if not self.__running: raise RuntimeError("Application is not running.")
+			self.__sync_context.Send(_cross_thread_executor, (method, args)) # type: ignore
 
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
-		return WebViewWindow(self, self.__configuration, params)
+		with _state_lock:
+			if not self.__running: raise RuntimeError("Application is not running.")
+			return WebViewWindow(self, self.__sync_context, self.__configuration, params) # type: ignore
 
 	def stop(self):
 		with _state_lock:
 			if self.__running: Application.Exit()
 
 	def __start(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
-		_state_lock.release()
 		self.__running = True
+		sync_context = self.__sync_context = WindowsFormsSynchronizationContext()
+		WindowsFormsSynchronizationContext.SetSynchronizationContext(sync_context)
+		set_event_loop(new_event_loop())
+		_state_lock.release()
 		[main, options] = params
 		if main:
 			try: main(self)
 			except Exception as e:
 				print_exception(e)
 				return
-		else:
-			if "exit_on_close" not in options: options["exit_on_close"] = True
-			self.__main_window = self.create_window(**options)
-		Application.Run(ApplicationContext())
+		else: self.__main_window = self.create_window(**options)
+		Application.Run(self.__app_context)
 
 	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):
 		global _running_application
 		_state_lock.acquire()
 		try:
-			assert main is None or isfunction(main) or ismethod(main), "Argument 'main' is not a valid callable object."
-			assert (current_thread() is main_thread()), "WebViewApplication can start in main thread only."
-			assert not self.__running, "WebViewApplication is already started."
-			assert not _running_application, "A WebViewApplication is already running."
+			if main is not None and not isfunction(main) and not ismethod(main): raise TypeError("Argument 'main' is not a valid callable object.")
+			if current_thread() is not main_thread(): raise RuntimeError("WebViewApplication can start in main thread only.")
+			if self.__running: raise RuntimeError("WebViewApplication is already started.")
+			if _running_application: raise RuntimeError("A WebViewApplication is already running.")
 		except AssertionError as e:
 			_state_lock.release()
 			raise e
@@ -134,6 +159,7 @@ class WebViewApplication:
 		thread.Join()
 		with _state_lock:
 			self.__running = False
+			self.__sync_context = None
 			_running_application = None
 
 class WebViewWindowInitializeParameters:
@@ -146,14 +172,9 @@ class WebViewWindowInitializeParameters:
 
 class WebViewWindow:
 	@property
-	def on_closed(self): return self.__on_closed
+	def closed(self): return self.__closed
 	@property
-	def exit_on_close(self): return self.__exit_on_close
-	@exit_on_close.setter
-	def exit_on_close(self, value: bool):
-		self.__exit_on_close = bool(value)
-	def __on_close_handler(self, *_):
-		if self.__exit_on_close: self.__application.stop()
+	def on_closed(self): return self.__on_closed
 
 	@property
 	def navigate_uri(self): return self.__navigate_uri
@@ -162,50 +183,51 @@ class WebViewWindow:
 		self.__webview.Source = Uri(value)
 		self.__navigate_uri = value
 
-	def __init__(self, application: WebViewApplication, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
-		self.__application = application
-		self.__on_closed: Notifier[Self, CloseReason]
-		on_closed = self.__on_closed = Notifier()
-		on_closed.add_handler(self.__on_close_handler)
-		self.__exit_on_close = params.get("exit_on_close", False)
+	def __init__(self, app: WebViewApplication, sync_context: WindowsFormsSynchronizationContext, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+		self.__closed = False
+		self.__application = app
+		self.__sync_context = sync_context
+		self.__message_notifier = Notifier()
+		self.__on_closed = Notifier[Self, CloseReason]()
 
 		window = self.__window = Form()
-		window.Text = params.get("title", global_configuration.title)
+		window.Text = params.get("title", configuration.title)
 		window.Size = Size(300, 300)
 		# window.TransparencyKey = window.BackColor
-
-		init_params = WebViewWindowInitializeParameters(global_configuration, params)
+		
+		init_params = WebViewWindowInitializeParameters(configuration, params)
 		self.__webview: WebView2
 		webview = self.__webview = WebView2()
 		webview_properties = CoreWebView2CreationProperties()
-		webview_properties.IsInPrivateModeEnabled = params.get("private_mode", global_configuration.private_mode)
-		webview_properties.UserDataFolder = global_configuration.data_folder
+		webview_properties.IsInPrivateModeEnabled = params.get("private_mode", configuration.private_mode)
+		webview_properties.UserDataFolder = configuration.data_folder
 		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
 		webview.CreationProperties = webview_properties
 		webview.DefaultBackgroundColor = Color.White
 		webview.Dock = DockStyle.Fill
-		self.__api = params.get("api", global_configuration.api)
+		self.__api = params.get("api", configuration.api)
 
-		webview.CoreWebView2InitializationCompleted += method_bind(self.__on_webview_ready, init_params)
+		webview.CoreWebView2InitializationCompleted += lambda w, a: self.__on_webview_ready(init_params, w, a)
+		if configuration.debug_enabled:
+			webview.NavigationStarting += self.__on_navigation_start
+			webview.NavigationCompleted += self.__on_navigation_completed
 		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
 		webview.Source = Uri(initial_uri)
 
 		window.Controls.Add(webview)
 		window.Closed += self.__on_window_closed
-		self.__webview_hwnd: Optional[int] = None
-		
-		self.__message_notifier = Notifier()
 
-		window.Show()
-		# private_mode = True,
-		# user_agent:Optional[str] = None,
-		# virtual_hosts: Optional[Iterable[WebViewVirtualHost]] = None,
-		# api: object = None,
-		# web_api_permission_bypass: bool = False,
+		if not params.get("hide"): window.Show()
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None
 
 	def __on_window_closed(self, _: Form, args: FormClosedEventArgs):
+		self.__closed = True
+		app = self.__application
+		self.__sync_context = None
+		if self is app.main_window:
+			app.main_window = None
+			if app.stop_at_main_window_closed: app.stop()
 		self.__on_closed.trigger(self, args.CloseReason)
 
 	def __on_new_window_request(self, _: CoreWebView2, args: CoreWebView2NewWindowRequestedEventArgs):
@@ -214,12 +236,18 @@ class WebViewWindow:
 	def __on_permission_requested(self, _: CoreWebView2, args: CoreWebView2PermissionRequestedEventArgs):
 		args.State = CoreWebView2PermissionState.Allow
 
+	def __on_navigation_start(self, _: WebView2, args: CoreWebView2NavigationStartingEventArgs):
+		print("Webview navigation started: " + args.Uri)
+
+	def __on_navigation_completed(self, _: WebView2, args: CoreWebView2NavigationCompletedEventArgs):
+		print(f"Webview navigation completed, status: " + str(args.HttpStatusCode))
+
 	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2, args: CoreWebView2InitializationCompletedEventArgs):
 		if not args.IsSuccess:
 			print_exception(WebViewException(args.InitializationException))
 			return
 		core = webview.CoreWebView2
-		assert core
+		assert core, "Unexpected condition: webview.CoreWebView2 is falsy."
 		core.NewWindowRequested += self.__on_new_window_request
 		if init_params.web_api_permission_bypass: core.PermissionRequested += self.__on_permission_requested
 		Bridge(core, self.__api)

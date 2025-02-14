@@ -32,7 +32,7 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 		if ismethod(value) or isfunction(value) or isbuiltin(value): methods[key] = value
 	return methods
 
-def async_call_thread(function: Callable, args_json: str, async_object: TaskCompletionSource):
+def async_call_thread(function: Callable, args_json: str, async_object: TaskCompletionSource[str]):
 	try:
 		result=function(*loads(args_json))
 		if (iscoroutine(result)): result=get_event_loop().run_until_complete(result)
@@ -57,5 +57,5 @@ class Bridge:
 	
 	def __sync_call_handler(self, method_name: str, args_json: str):
 		return dumps(self.__api[method_name](*loads(args_json)), ensure_ascii=False, default=serialize_object)
-	def __async_call_handler(self, method_name: str, args_json: str, async_object):
+	def __async_call_handler(self, method_name: str, args_json: str, async_object: TaskCompletionSource[str]):
 		Thread(None, async_call_thread, method_name, (self.__api[method_name], args_json, async_object), daemon=True).start()

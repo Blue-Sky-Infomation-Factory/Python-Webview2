@@ -76,7 +76,7 @@ class WebViewWindowParameters(TypedDict, total=False):
 	size: Tuple[int, int]
 	position: Tuple[int, int]
 	hide: bool
-	borderless: bool
+	frameless: bool
 	background_color: Color
 	min_size: Tuple[int, int]
 	max_size: Tuple[int, int]
@@ -181,18 +181,78 @@ class WebViewWindow:
 		self.__cross_thread_call(self.__navigate_uri_call, (value,))
 		self.__navigate_uri = value
 
+	@property
+	def size(self):
+		size = self.__window.ClientSize
+		return (size.Width, size.Height)
+	@size.setter
+	def size(self, value: Tuple[int, int]):
+		size = self.__window.ClientSize
+		size.Width = value[0]
+		size.Height = value[1]
+		self.__window.ClientSize = size
+
+	@property
+	def min_size(self): return self.__min_size
+	@min_size.setter
+	def min_size(self, value: Optional[Tuple[int, int]]):
+		window = self.__window
+		if value is None:
+			window.MinimumSize = Size.Empty
+			self.__min_size = None
+			return
+		(width, height) = value
+		if width < 0 or height < 0: raise ValueError("Width and height can't be less than 0")
+		size = window.ClientSize
+		inner_width = size.Width
+		inner_height = size.Height
+		size = window.Size
+		size.Width = size.Width - inner_width + width
+		size.Height = size.Height - inner_height + height
+		window.MinimumSize = size
+		self.__min_size = value
+
+	@property
+	def max_size(self): return self.__max_size
+	@max_size.setter
+	def max_size(self, value: Optional[Tuple[int, int]]):
+		window = self.__window
+		if value is None:
+			window.MaximumSize = Size.Empty
+			self.__max_size = None
+			return
+		(width, height) = value
+		if width < 0 or height < 0: raise ValueError("Width and height can't be less than 0")
+		size = window.ClientSize
+		inner_width = size.Width
+		inner_height = size.Height
+		size = window.Size
+		size.Width = size.Width - inner_width + width
+		size.Height = size.Height - inner_height + height
+		window.MaximumSize = size
+		self.__max_size = value
+		print(size, value)
+
 	def __init__(self, app: WebViewApplication, cross_thread_caller: Callable[[Callable, Tuple], None], configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.__closed = False
 		self.__application = app
 		self.__cross_thread_caller = cross_thread_caller
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self, CloseReason]()
+		self.__min_size = None
+		self.__max_size = None
 
 		window = self.__window = Form()
 		window.Text = params.get("title", configuration.title)
-		window.Size = Size(300, 300)
-		# window.TransparencyKey = window.BackColor
-		
+
+		size = params.get("min_size")
+		if size: self.min_size = size
+		size = params.get("max_size")
+		if size: self.max_size = size
+		size = params.get("size")
+		if size: self.size = size
+
+		window.BackColor = Color.White
 		init_params = WebViewWindowInitializeParameters(configuration, params)
 		self.__webview: WebView2
 		webview = self.__webview = WebView2()
@@ -201,7 +261,7 @@ class WebViewWindow:
 		webview_properties.UserDataFolder = configuration.data_folder
 		webview_properties.AdditionalBrowserArguments = "--disable-features=ElasticOverscroll"
 		webview.CreationProperties = webview_properties
-		webview.DefaultBackgroundColor = Color.White
+		webview.DefaultBackgroundColor = Color.Transparent
 		webview.Dock = DockStyle.Fill
 		self.__api = params.get("api", configuration.api)
 
@@ -242,7 +302,7 @@ class WebViewWindow:
 		print("Webview navigation started: " + args.Uri)
 
 	def __on_navigation_completed(self, _: WebView2, args: CoreWebView2NavigationCompletedEventArgs):
-		print(f"Webview navigation completed, status: " + str(args.HttpStatusCode))
+		print("Webview navigation completed, status: " + str(args.HttpStatusCode))
 
 	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2, args: CoreWebView2InitializationCompletedEventArgs):
 		if not args.IsSuccess:

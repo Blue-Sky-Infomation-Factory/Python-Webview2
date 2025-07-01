@@ -5,7 +5,7 @@ with open('README.md', 'r') as file:
 
 setup(
 	name="bsif-webview2",
-	version="1.3.0",
+	version="1.4.0",
 	author="Blue Sky Infomation Factory",
 	description="Microsoft Webview2 for python.",
 	long_description=readme,

@@ -34,6 +34,7 @@ class WebViewStartParameters(TypedDict, total=False):
 	hide: bool
 	borderless: bool
 	background_transparent: bool # not implemented
+	icon: str
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -109,6 +110,8 @@ class WebViewApplication:
 		root = self.__root = Tk()
 		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
 		root.title(self.__title)
+		icon = keywords.get("icon")
+		if icon: root.iconbitmap(icon)
 		root.minsize(*configuration.min_size)
 		if configuration.max_size: root.maxsize(*configuration.max_size)
 		size=keywords.get("size")
@@ -230,6 +233,10 @@ class WebViewApplication:
 
 	@property
 	def message_handlers(self): return self.__message_handlers
+
+	def set_icon(self, file_path: str):
+		assert self.__root, "WebView is not started."
+		self.__root.iconbitmap(file_path)
 
 	@property
 	def size(self):

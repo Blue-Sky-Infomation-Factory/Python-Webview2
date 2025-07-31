@@ -35,6 +35,7 @@ class WebViewStartParameters(TypedDict, total=False):
 	borderless: bool
 	background_transparent: bool # not implemented
 	icon: str
+	title: str
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -76,10 +77,10 @@ state_dict={
 
 class WebViewApplication:
 
-	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration(), title = "WebView Application"):
+	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration()):
 		self.__configuration = configuration
 		self.__thread: Optional[Thread] = None
-		self.__title = title
+		self.__title = "WebView Application"
 		self.__root: Optional[Tk] = None
 		self.__frame: Optional[Frame | Label] = None
 		self.__webview: Optional[WebView2] = None
@@ -109,6 +110,8 @@ class WebViewApplication:
 		configuration = self.__configuration
 		root = self.__root = Tk()
 		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
+		title = keywords.get("title", None)
+		if title is not None: self.__title = title
 		root.title(self.__title)
 		icon = keywords.get("icon")
 		if icon: root.iconbitmap(icon)
@@ -324,5 +327,13 @@ class WebViewApplication:
 		)
 	def show_directory_picker(self, initial_directory: Optional[str] = None, title: Optional[str] = None ) -> str | None:
 		return askdirectory(parent=self.__root, initialdir=initial_directory, title=title, mustexist=True)
+	
+	@property
+	def title(self): return self.__title
+	@title.setter
+	def title(self, value: str):
+		self.__title = value
+		root = self.__root
+		if root: root.title(value)
 
 running_application: Optional[WebViewApplication] = None

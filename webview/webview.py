@@ -1,3 +1,4 @@
+from re import match
 import clr
 from json import dumps
 from os import getenv
@@ -10,6 +11,7 @@ from traceback import print_exception
 from typing import Any, Callable, Iterable, List, Optional, Tuple, TypedDict, Unpack
 from win32gui import SetParent, MoveWindow, GetParent, SetWindowLong, GetWindowLong
 from win32con import GWL_STYLE, WS_CAPTION, WS_THICKFRAME
+from ctypes import windll, c_uint, byref, sizeof
 
 from .bridge import Bridge, serialize_object
 from .handlers import Handlers
@@ -28,6 +30,10 @@ from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ApartmentState, ParameterizedThreadStart # type: ignore
 from System.Windows.Forms import AnchorStyles, DockStyle # type: ignore
 
+# Windows DWM API
+DwmSetWindowAttribute = windll.dwmapi.DwmSetWindowAttribute
+DWMWA_CAPTION_COLOR = 35
+
 class WebViewStartParameters(TypedDict, total=False):
 	size: Optional[Tuple[int, int]]
 	position: Optional[Tuple[int, int]]
@@ -36,6 +42,7 @@ class WebViewStartParameters(TypedDict, total=False):
 	background_transparent: bool # not implemented
 	icon: str
 	title: str
+	window_caption_color: str
 
 class WebViewException(Exception):
 	def __init__(self, exception):
@@ -75,6 +82,30 @@ state_dict={
 	"normal": "normal"
 }
 
+def _parse_color(value: str) -> Tuple[int, int, int]:
+	value = value.strip()
+	match_rs = match(r"^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$", value)
+	if match_rs:
+		return (int(match_rs[3]), int(match_rs[2]), int(match_rs[1]))
+	match_rs = match(r"^#([\dA-Fa-f]{3,6})$", value)
+	if match_rs:
+		temp = match_rs[1]
+		match len(temp):
+			case 6:
+				return (
+					int(temp[4:6], 16),
+					int(temp[2:4], 16),
+					int(temp[0:2], 16)
+				)
+			case 3:
+				return (
+					int(temp[2] * 2, 16),
+					int(temp[1] * 2, 16),
+					int(temp[0] * 2, 16)
+				)
+			case _: pass
+	raise Exception("Invalid color string.")
+
 class WebViewApplication:
 
 	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration()):
@@ -109,6 +140,8 @@ class WebViewApplication:
 	def __run(self, keywords: WebViewStartParameters):
 		configuration = self.__configuration
 		root = self.__root = Tk()
+		caption_color = keywords.get("window_caption_color", None)
+		if caption_color is not None: self.set_window_caption_color(caption_color)
 		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
 		title = keywords.get("title", None)
 		if title is not None: self.__title = title
@@ -335,5 +368,21 @@ class WebViewApplication:
 		self.__title = value
 		root = self.__root
 		if root: root.title(value)
+
+	def set_window_caption_color(self, value: str):
+		"""
+		value format:
+		rgb(255,255,255) |
+		#RRGGBB |
+		#RGB
+		"""
+		bin = 0
+		for x in _parse_color(value):
+			if x > 255:
+				raise Exception("Invalid color string.")
+			bin = bin << 8 | x
+		assert self.__root, "WebView is not started."
+		temp = c_uint(bin)
+		DwmSetWindowAttribute(GetParent(self.__root.winfo_id()), DWMWA_CAPTION_COLOR, byref(temp), sizeof(temp))
 
 running_application: Optional[WebViewApplication] = None

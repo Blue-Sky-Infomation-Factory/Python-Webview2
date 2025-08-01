@@ -103,7 +103,7 @@ class WebViewApplication:
 	def __borderlessfy(self, *_):
 		root = self.__root
 		hwnd = GetParent(root.winfo_id()) # type: ignore
-		SetWindowLong(GetParent(root.winfo_id()), GWL_STYLE, GetWindowLong(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME)) # type: ignore
+		SetWindowLong(hwnd, GWL_STYLE, GetWindowLong(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME)) # type: ignore
 		root.unbind("<Map>") # type: ignore
 
 	def __run(self, keywords: WebViewStartParameters):

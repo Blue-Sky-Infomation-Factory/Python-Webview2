@@ -1,6 +1,6 @@
 from webview import WebViewApplication
 from webview.webview import WebViewConfiguration
 
-app = WebViewApplication(WebViewConfiguration(debug_enabled=True), "test")
+app = WebViewApplication(WebViewConfiguration(debug_enabled=True))
 
-app.start(borderless=True)
+app.start(title="test", window_caption_color="#F00")

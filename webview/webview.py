@@ -28,7 +28,6 @@ from Microsoft.Web.WebView2.WinForms import WebView2, CoreWebView2CreationProper
 from System import Uri # type: ignore
 from System.Drawing import Color # type: ignore
 from System.Threading import Thread, ApartmentState, ParameterizedThreadStart # type: ignore
-from System.Windows.Forms import AnchorStyles, DockStyle # type: ignore
 
 # Windows DWM API
 DwmSetWindowAttribute = windll.dwmapi.DwmSetWindowAttribute
@@ -106,6 +105,12 @@ def _parse_color(value: str) -> Tuple[int, int, int]:
 			case _: pass
 	raise Exception("Invalid color string.")
 
+def _event_once(tk: Tk, event: str, func: Callable, args: Iterable = tuple()):
+	def wrapped_func(event_obj):
+		tk.unbind(event, bound_id)
+		func(*args, event_obj)
+	bound_id = tk.bind(event, wrapped_func, True)
+
 class WebViewApplication:
 
 	def __init__(self, configuration: WebViewConfiguration = WebViewConfiguration()):
@@ -135,14 +140,13 @@ class WebViewApplication:
 		root = self.__root
 		hwnd = GetParent(root.winfo_id()) # type: ignore
 		SetWindowLong(hwnd, GWL_STYLE, GetWindowLong(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME)) # type: ignore
-		root.unbind("<Map>") # type: ignore
 
 	def __run(self, keywords: WebViewStartParameters):
 		configuration = self.__configuration
 		root = self.__root = Tk()
 		caption_color = keywords.get("window_caption_color", None)
 		if caption_color is not None: self.set_window_caption_color(caption_color)
-		if keywords.get("borderless", False): root.bind("<Map>", self.__borderlessfy)
+		if keywords.get("borderless", False): _event_once(root, "<Map>", self.__borderlessfy)
 		title = keywords.get("title", None)
 		if title is not None: self.__title = title
 		root.title(self.__title)

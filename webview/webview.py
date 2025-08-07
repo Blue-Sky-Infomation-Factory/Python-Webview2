@@ -81,27 +81,19 @@ state_dict={
 	"normal": "normal"
 }
 
-def _parse_color(value: str) -> Tuple[int, int, int]:
+def _parse_color(value: str) -> int:
 	value = value.strip()
 	match_rs = match(r"^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$", value)
 	if match_rs:
-		return (int(match_rs[3]), int(match_rs[2]), int(match_rs[1]))
+		return int(match_rs[3]) << 16 | int(match_rs[2]) << 8 | int(match_rs[1])
 	match_rs = match(r"^#([\dA-Fa-f]{3,6})$", value)
 	if match_rs:
 		temp = match_rs[1]
 		match len(temp):
 			case 6:
-				return (
-					int(temp[4:6], 16),
-					int(temp[2:4], 16),
-					int(temp[0:2], 16)
-				)
+				return int(temp[4:6], 16) << 16 | int(temp[2:4], 16) << 8 | int(temp[0:2], 16)
 			case 3:
-				return (
-					int(temp[2] * 2, 16),
-					int(temp[1] * 2, 16),
-					int(temp[0] * 2, 16)
-				)
+				return int(temp[2] * 2, 16) << 16 | int(temp[1] * 2, 16) << 8 | int(temp[0] * 2, 16)
 			case _: pass
 	raise Exception("Invalid color string.")
 
@@ -145,7 +137,7 @@ class WebViewApplication:
 		configuration = self.__configuration
 		root = self.__root = Tk()
 		caption_color = keywords.get("window_caption_color", None)
-		if caption_color is not None: self.set_window_caption_color(caption_color)
+		if caption_color is not None: _event_once(root, "<Map>", self.__set_window_caption_color, (_parse_color(caption_color),))
 		if keywords.get("borderless", False): _event_once(root, "<Map>", self.__borderlessfy)
 		title = keywords.get("title", None)
 		if title is not None: self.__title = title
@@ -373,6 +365,11 @@ class WebViewApplication:
 		root = self.__root
 		if root: root.title(value)
 
+	def __set_window_caption_color(self, value: int, *_):
+		assert self.__root, "WebView is not started."
+		temp = c_uint(value)
+		DwmSetWindowAttribute(GetParent(self.__root.winfo_id()), DWMWA_CAPTION_COLOR, byref(temp), sizeof(temp))
+
 	def set_window_caption_color(self, value: str):
 		"""
 		value format:
@@ -380,13 +377,6 @@ class WebViewApplication:
 		#RRGGBB |
 		#RGB
 		"""
-		bin = 0
-		for x in _parse_color(value):
-			if x > 255:
-				raise Exception("Invalid color string.")
-			bin = bin << 8 | x
-		assert self.__root, "WebView is not started."
-		temp = c_uint(bin)
-		DwmSetWindowAttribute(GetParent(self.__root.winfo_id()), DWMWA_CAPTION_COLOR, byref(temp), sizeof(temp))
+		self.__set_window_caption_color(_parse_color(value))
 
 running_application: Optional[WebViewApplication] = None

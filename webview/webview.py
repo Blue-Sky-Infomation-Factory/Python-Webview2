@@ -5,7 +5,7 @@ from clr import AddReference
 from os import getenv
 from os.path import dirname, join
 from threading import Lock, current_thread, main_thread
-from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
+from typing import Any, Callable, Dict, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
 from webview.bridge import Bridge
@@ -16,7 +16,7 @@ AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll"))
 AddReference(join(self_path, "Microsoft.Web.WebView2.Wpf.dll"))
 del self_path
 
-from System import Exception as CSException, Uri
+from System import Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
 from System.Threading import ApartmentState, Thread as CSharpThread, ParameterizedThreadStart
 from System.Windows import Application, Window
@@ -87,6 +87,12 @@ class WebViewWindowParameters(TypedDict, total=False):
 
 _state_lock = Lock()
 
+def _cross_thread_caller(method: Callable, args: Tuple, kwargs: Dict):
+	return method(*args, **kwargs)
+_cross_thread_delegate = Func[CSObject, CSObject, CSObject, CSObject](_cross_thread_caller) # type: ignore
+def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], RT], args: Tuple[*AT], kwargs: Dict = {}) -> RT:
+	return dispatcher.Invoke(_cross_thread_delegate, (method, args, kwargs)) # type: ignore
+
 class WebViewApplication:
 	@property
 	def stop_at_main_window_closed(self): return self.__stop_at_main_window_closed
@@ -111,8 +117,8 @@ class WebViewApplication:
 		self.__main_window: Optional[WebViewWindow] = None
 
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
-		# return self.__cross_thread_call(WebViewWindow, (self, self.__cross_thread_call, self.__configuration, params))
-		return WebViewWindow(self, None, self.__configuration, params)
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, WebViewWindow, (self, self.__dispatcher, self.__configuration, params))
 
 	def __run(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
 		self.__running = True
@@ -163,10 +169,10 @@ class WebViewWindowInitializeParameters:
 		self.web_api_permission_bypass = params.get("web_api_permission_bypass", global_configuration.web_api_permission_bypass)
 
 class WebViewWindow:
-	def __init__(self, app: WebViewApplication, cross_thread_caller: Callable[[Callable, Tuple], None], configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+	def __init__(self, app: WebViewApplication, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.__closed = False
 		self.__application = app
-		self.__cross_thread_caller = cross_thread_caller
+		self.__dispatcher = dispatcher
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self]()
 		self.__min_size = None

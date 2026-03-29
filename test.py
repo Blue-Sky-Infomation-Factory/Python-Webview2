@@ -7,8 +7,8 @@ app = WebViewApplication(debug_enabled=True)
 
 def delay_test():
 	sleep(10)
-	app.create_window()
-	print("!")
+	aa = app.create_window()
+	print(aa)
 
 Thread(None, delay_test).start()
 

@@ -1,11 +1,10 @@
 from inspect import isfunction, ismethod
 from traceback import print_exception
-
 from clr import AddReference
 from os import getenv
 from os.path import dirname, join
 from threading import Lock, current_thread, main_thread
-from typing import Any, Callable, Dict, Iterable, Optional, Self, Tuple, TypedDict, Unpack
+from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
 from webview.bridge import Bridge
@@ -16,10 +15,10 @@ AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll"))
 AddReference(join(self_path, "Microsoft.Web.WebView2.Wpf.dll"))
 del self_path
 
-from System import Exception as CSException, Uri, Func, Object as CSObject
+from System import EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
 from System.Threading import ApartmentState, Thread as CSharpThread, ParameterizedThreadStart
-from System.Windows import Application, Window
+from System.Windows import Application, ShutdownMode, Window
 from System.Windows.Controls import Grid # type: ignore
 from System.Windows.Media import Brushes
 from System.Windows.Threading import Dispatcher # type: ignore
@@ -87,11 +86,11 @@ class WebViewWindowParameters(TypedDict, total=False):
 
 _state_lock = Lock()
 
-def _cross_thread_caller(method: Callable, args: Tuple, kwargs: Dict):
-	return method(*args, **kwargs)
-_cross_thread_delegate = Func[CSObject, CSObject, CSObject, CSObject](_cross_thread_caller) # type: ignore
-def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], RT], args: Tuple[*AT], kwargs: Dict = {}) -> RT:
-	return dispatcher.Invoke(_cross_thread_delegate, (method, args, kwargs)) # type: ignore
+def _cross_thread_executor(method: Callable, args: Tuple):
+	return method(*args)
+_cross_thread_delegate = Func[CSObject, CSObject, CSObject](_cross_thread_executor) # type: ignore
+def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], RT], args: Tuple[*AT] = ()) -> RT:
+	return dispatcher.Invoke(_cross_thread_delegate, (method, args)) # type: ignore
 
 class WebViewApplication:
 	@property
@@ -111,7 +110,7 @@ class WebViewApplication:
 	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
 		self.__configuration = WebViewGlobalConfiguration(params)
 		self.__running = False
-		self.__wpf_application: Optional[Application] = None
+		self.__application: Optional[Application] = None
 		self.__dispatcher: Optional[Dispatcher] = None
 		self.__stop_at_main_window_closed = params.get("stop_at_main_window_closed", True)
 		self.__main_window: Optional[WebViewWindow] = None
@@ -122,10 +121,11 @@ class WebViewApplication:
 
 	def __run(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
 		self.__running = True
-		app = self.__wpf_application = Application()
+		app = self.__application = Application()
 		self.__dispatcher = app.Dispatcher
 		_state_lock.release()
 		[main, options] = params
+		app.ShutdownMode = ShutdownMode.OnExplicitShutdown
 		if main:
 			try: main(self)
 			except Exception as e:
@@ -140,9 +140,9 @@ class WebViewApplication:
 		try:
 			if main is not None and not isfunction(main) and not ismethod(main): raise TypeError("Argument 'main' is not a valid callable object.")
 			if current_thread() is not main_thread(): raise RuntimeError("WebViewApplication can start in main thread only.")
-			if self.__running: raise RuntimeError("WebViewApplication is already started.")
-			if _running_application: raise RuntimeError("A WebViewApplication is already running.")
-		except AssertionError as e:
+			if self.__running: raise Exception("WebViewApplication is already started.")
+			if _running_application: raise Exception("A WebViewApplication is already running.")
+		except Exception as e:
 			_state_lock.release()
 			raise e
 		_running_application = self
@@ -153,12 +153,14 @@ class WebViewApplication:
 		with _state_lock:
 			self.__running = False
 			_running_application = self.__dispatcher = None
-	
+	def __stop(self):
+		assert self.__application
+		self.__application.Shutdown()
 	def stop(self):
 		with _state_lock:
 			if self.__running:
-				assert self.__wpf_application
-				self.__wpf_application.Shutdown()
+				assert self.__application and self.__dispatcher
+				_cross_thread_call(self.__dispatcher, self.__stop)
 
 class WebViewWindowInitializeParameters:
 	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
@@ -188,7 +190,6 @@ class WebViewWindow:
 		size = params.get("size")
 		if size: self.size = size
 
-		# window.BackColor = Color.White
 		init_params = WebViewWindowInitializeParameters(configuration, params)
 		layout = Grid()
 		layout.Background = Brushes.White
@@ -210,14 +211,35 @@ class WebViewWindow:
 
 		layout.Children.Add(webview)
 		window.Content = layout
-		# window.Closed += self.__on_window_closed
 
+		window.Closed += self.__on_window_closed
 		if not params.get("hide"): window.Show()
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None
 	
 	@property
-	def closed(self): return self.closed
+	def closed(self): return self.__closed
+	@property
+	def on_closed(self): return self.__on_closed
+	def __close(self):
+		self.__window.Close()
+	def close(self):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__close)
+
+	@property
+	def navigate_uri(self): return self.__navigate_uri
+	def __navigate_uri_call(self, value): self.__webview.Source = Uri(value)
+	@navigate_uri.setter
+	def navigate_uri(self, value: str):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__navigate_uri_call, (value,))
+		self.__navigate_uri = value
+
+	def __on_window_closed(self, _, args: EventArgs):
+		self.__closed = True
+		self.__dispatcher = None
+		self.__on_closed.trigger(self)
 
 	def __on_new_window_request(self, _: CoreWebView2, args: CoreWebView2NewWindowRequestedEventArgs):
 		args.Handled = True
@@ -264,6 +286,11 @@ class WebViewWindow:
 				)
 
 		if debug_enabled: core.OpenDevToolsWindow()
+
+	def _get_wpf_window(self):
+		return self.__window
+_get_wpf_window = WebViewWindow._get_wpf_window
+del WebViewWindow._get_wpf_window
 
 _running_application: Optional[WebViewApplication] = None
 def get_running_application():

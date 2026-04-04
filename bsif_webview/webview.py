@@ -7,7 +7,7 @@ from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
-from webview.bridge import Bridge
+from .bridge import Bridge
 
 AddReference("wpf\\PresentationFramework")
 self_path = dirname(__file__)

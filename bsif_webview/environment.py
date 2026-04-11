@@ -19,7 +19,8 @@ def check_environment():
 		result["dotnet"]=QueryValueEx(
 			OpenKey(HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"),
 			'Release'
-		)[0] >= 394802 # .NET 4.6.2
+		)[0] >= 533320 # .NET 4.8.1
+		# 4.6.2: 394802
 	except: pass
 	# check webview
 	try:

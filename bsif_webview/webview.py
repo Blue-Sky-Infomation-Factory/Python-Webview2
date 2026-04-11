@@ -227,6 +227,81 @@ class WebViewWindow:
 		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__close)
 
+	def __get_min_width(self):
+		return self.__window.MinWidth
+	@property
+	def min_width(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_min_width)
+	def __set_min_width(self, value: float):
+		self.__window.MinWidth = value
+	@min_width.setter
+	def min_width(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_min_width, (value,))
+	def __get_min_height(self):
+		return self.__window.MinHeight
+	@property
+	def min_height(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_min_height)
+	def __set_min_height(self, value: float):
+		self.__window.MinHeight = value
+	@min_height.setter
+	def min_height(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_min_height, (value,))
+
+	def __get_max_width(self):
+		return self.__window.MaxWidth
+	@property
+	def max_width(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_max_width)
+	def __set_max_width(self, value: float):
+		self.__window.MaxWidth = value
+	@max_width.setter
+	def max_width(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_max_width, (value,))
+	def __get_max_height(self):
+		return self.__window.MaxHeight
+	@property
+	def max_height(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_max_height)
+	def __set_max_height(self, value: float):
+		self.__window.MaxHeight = value
+	@max_height.setter
+	def max_height(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_max_height, (value,))
+
+	def __get_width(self):
+		return self.__window.Width
+	@property
+	def width(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_width)
+	def __set_width(self, value: float):
+		self.__window.Width = value
+	@width.setter
+	def width(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_width, (value,))
+	def __get_height(self):
+		return self.__window.Height
+	@property
+	def height(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_height)
+	def __set_height(self, value: float):
+		self.__window.Height = value
+	@height.setter
+	def height(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_height, (value,))
+
 	@property
 	def navigate_uri(self): return self.__navigate_uri
 	def __navigate_uri_call(self, value): self.__webview.Source = Uri(value)

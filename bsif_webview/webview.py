@@ -177,8 +177,6 @@ class WebViewWindow:
 		self.__dispatcher = dispatcher
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self]()
-		self.__min_size = None
-		self.__max_size = None
 
 		window = self.__window = Window()
 		window.Title = params.get("title", configuration.title)
@@ -310,6 +308,27 @@ class WebViewWindow:
 		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__navigate_uri_call, (value,))
 		self.__navigate_uri = value
+
+	def __get_icon(self):
+		return self.__window.Icon
+	@property
+	def icon(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_icon)
+	def __set_icon(self, value: Optional[ImageSource]):
+		self.__window.Icon = value
+	@icon.setter
+	def icon(self, value: str | ImageSource | None):
+		if isinstance(value, str):
+			value = BitmapImage(Uri(value))
+			value.Freeze()
+		elif isinstance(value, ImageSource):
+			if not value.IsFrozen:
+				raise ValueError("Cannot set icon to non-frozen ImageSource")
+		elif value is not None:
+			raise ValueError("Value must be str or ImageSource")
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_icon, (value,))
 
 	def __on_window_closed(self, _, args: EventArgs):
 		self.__closed = True

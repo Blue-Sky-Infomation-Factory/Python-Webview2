@@ -526,6 +526,10 @@ class WebViewWindow:
 		future = Future()
 		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
 		return future
+	
+	@property
+	def message_notifier(self):
+		return self.__message_notifier
 
 	def _get_wpf_window(self):
 		return self.__window

@@ -19,7 +19,7 @@ del self_path
 from System import EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
 from System.Threading import ApartmentState, Thread as CSharpThread, ParameterizedThreadStart
-from System.Windows import Application, ShutdownMode, Window, WindowState, WindowStyle
+from System.Windows import Application, ResizeMode, ShutdownMode, Window, WindowState, WindowStyle
 from System.Windows.Controls import Grid # type: ignore
 from System.Windows.Media import Brushes, ImageSource
 from System.Windows.Media.Imaging import BitmapImage # type: ignore
@@ -210,6 +210,7 @@ class WebViewWindow:
 				window.Width = width
 			if height is not None:
 				window.Height = height
+		window.ResizeMode = ResizeMode.CanResize if params.get("resizable", True) else ResizeMode.NoResize
 		position = params.get("position")
 		if position:
 			[top, left] = position
@@ -437,6 +438,20 @@ class WebViewWindow:
 			raise ValueError("Value must be str or ImageSource")
 		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_icon, (value,))
+	
+	def __get_resizable(self):
+		return self.__window.ResizeMode != ResizeMode.NoResize
+	@property
+	def resizable(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_resizable)
+	def __set_resizable(self, value: bool):
+		assert self.__dispatcher
+		self.__window.ResizeMode = ResizeMode.CanResize if value else ResizeMode.NoResize
+	@resizable.setter	
+	def resizable(self, value: bool):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_resizable, (value,))
 
 	def __on_window_closed(self, _, args: EventArgs):
 		self.__closed = True

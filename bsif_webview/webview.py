@@ -73,11 +73,11 @@ class WebViewGlobalConfiguration:
 class WebViewWindowParameters(TypedDict, total=False):
 	initial_uri: str
 	title: str
-	size: Tuple[int, int]
+	size: Tuple[Optional[int], Optional[int]]
 	resizable: bool
-	min_size: Tuple[int, int]
-	max_size: Tuple[int, int]
-	position: Tuple[int, int]
+	min_size: Tuple[Optional[int], Optional[int]]
+	max_size: Tuple[Optional[int], Optional[int]]
+	position: Tuple[Optional[int], Optional[int]]
 	hide: bool
 	frameless: bool
 	private_mode: bool
@@ -190,11 +190,33 @@ class WebViewWindow:
 		window.Title = params.get("title", configuration.title)
 
 		size = params.get("min_size")
-		if size: self.min_size = size
+		if size:
+			[min_width, min_height] = size
+			if min_width is not None:
+				window.MinWidth = min_width
+			if min_height is not None:
+				window.MinHeight = min_height
 		size = params.get("max_size")
-		if size: self.max_size = size
+		if size:
+			[max_width, max_height] = size
+			if max_width is not None:
+				window.MaxWidth = max_width
+			if max_height is not None:
+				window.MaxHeight = max_height
 		size = params.get("size")
-		if size: self.size = size
+		if size:
+			[width, height] = size
+			if width is not None:
+				window.Width = width
+			if height is not None:
+				window.Height = height
+		position = params.get("position")
+		if position:
+			[top, left] = position
+			if top is not None:
+				window.Top = top
+			if left is not None:
+				window.Left = left
 
 		init_params = WebViewWindowInitializeParameters(configuration, params)
 		layout = Grid()
@@ -360,6 +382,31 @@ class WebViewWindow:
 	def height(self, value: float):
 		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_height, (value,))
+
+	def __get_top(self):
+		return self.__window.Top
+	@property
+	def top(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_top)
+	def __set_top(self, value: float):
+		self.__window.Top = value
+	@top.setter
+	def top(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_top, (value,))
+	def __get_left(self):
+		return self.__window.Left
+	@property
+	def left(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_left)
+	def __set_left(self, value: float):
+		self.__window.Left = value
+	@left.setter
+	def left(self, value: float):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_left, (value,))
 
 	@property
 	def navigate_uri(self): return self.__navigate_uri

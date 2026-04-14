@@ -240,6 +240,7 @@ class WebViewWindow:
 		if configuration.debug_enabled:
 			webview.NavigationStarting += self.__on_navigation_start
 			webview.NavigationCompleted += self.__on_navigation_completed
+		webview.WebMessageReceived += self.__on_javascript_message
 		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
 		webview.Source = Uri(initial_uri)
 
@@ -527,6 +528,8 @@ class WebViewWindow:
 		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
 		return future
 	
+	def __on_javascript_message(self, _, args):
+		self.__message_notifier.trigger(args.WebMessageAsJson, args.AdditionalObjects)
 	@property
 	def message_notifier(self):
 		return self.__message_notifier

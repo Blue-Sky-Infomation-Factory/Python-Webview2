@@ -7,7 +7,7 @@ from clr import AddReference
 from os import getenv
 from os.path import dirname, join
 from threading import Lock, current_thread, main_thread
-from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
+from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
 from .bridge import Bridge, serialize_object
@@ -92,10 +92,14 @@ class WebViewWindowParameters(TypedDict, total=False):
 _state_lock = Lock()
 
 def _cross_thread_executor(method: Callable, args: Tuple):
-	return method(*args)
+	try: result = method(*args)
+	except Exception as e: return (False, e)
+	return (True, result)
 _cross_thread_delegate = Func[CSObject, CSObject, CSObject](_cross_thread_executor) # type: ignore
 def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], RT], args: Tuple[*AT] = ()) -> RT:
-	return dispatcher.Invoke(_cross_thread_delegate, (method, args)) # type: ignore
+	result: Tuple[Literal[True], RT] | Tuple[Literal[False], Exception] = dispatcher.Invoke(_cross_thread_delegate, (method, args)) # type: ignore
+	if result[0] == True: return result[1] # type: ignore
+	else: raise result[1] # type: ignore
 
 class WebViewApplication:
 	@property

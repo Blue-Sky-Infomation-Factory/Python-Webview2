@@ -1,5 +1,7 @@
+from asyncio import Future
 from enum import Enum
 from inspect import isfunction, ismethod
+from json import dumps
 from traceback import print_exception
 from clr import AddReference
 from os import getenv
@@ -8,7 +10,7 @@ from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
-from .bridge import Bridge
+from .bridge import Bridge, serialize_object
 
 AddReference("wpf\\PresentationFramework")
 self_path = dirname(__file__)
@@ -16,9 +18,10 @@ AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll"))
 AddReference(join(self_path, "Microsoft.Web.WebView2.Wpf.dll"))
 del self_path
 
-from System import EventArgs, Exception as CSException, Uri, Func, Object as CSObject
+from System import Action, EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
 from System.Threading import ApartmentState, Thread as CSharpThread, ParameterizedThreadStart
+from System.Threading.Tasks import Task as CSTask # type: ignore
 from System.Windows import Application, ResizeMode, ShutdownMode, Window, WindowState, WindowStyle
 from System.Windows.Controls import Grid # type: ignore
 from System.Windows.Media import Brushes, ImageSource
@@ -35,7 +38,7 @@ from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2PermissionState,
 	CoreWebView2
 )
-from Microsoft.Web.WebView2.Wpf import CoreWebView2CreationProperties, WebView2CompositionControl # type: ignore
+from Microsoft.Web.WebView2.Wpf import CoreWebView2CreationProperties, WebView2 # type: ignore
 
 class WebViewException(Exception):
 	def __init__(self, exception: CSException):
@@ -177,6 +180,8 @@ class WebViewWindowState(Enum):
 	MINIMIZED = WindowState.Minimized
 	MAXIMIZED = WindowState.Maximized
 
+_execute_javascript_delegate = Action[CSTask[str]]
+
 class WebViewWindow:
 	def __init__(self, app: WebViewApplication, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.__closed = False
@@ -222,7 +227,7 @@ class WebViewWindow:
 		init_params = WebViewWindowInitializeParameters(configuration, params)
 		layout = Grid()
 		layout.Background = Brushes.White
-		webview = self.__webview = WebView2CompositionControl()
+		webview = self.__webview = WebView2()
 		webview_properties = CoreWebView2CreationProperties()
 		webview_properties.IsInPrivateModeEnabled = params.get("private_mode", configuration.private_mode)
 		webview_properties.UserDataFolder = configuration.data_folder
@@ -238,6 +243,7 @@ class WebViewWindow:
 		initial_uri = self.__navigate_uri = params.get("initial_uri", "about:blank")
 		webview.Source = Uri(initial_uri)
 
+		layout.Background = Brushes.Transparent
 		layout.Children.Add(webview)
 		window.Content = layout
 
@@ -464,13 +470,13 @@ class WebViewWindow:
 	def __on_permission_requested(self, _: CoreWebView2, args: CoreWebView2PermissionRequestedEventArgs):
 		args.State = CoreWebView2PermissionState.Allow
 
-	def __on_navigation_start(self, _: WebView2CompositionControl, args: CoreWebView2NavigationStartingEventArgs):
+	def __on_navigation_start(self, _: WebView2, args: CoreWebView2NavigationStartingEventArgs):
 		print("Webview navigation started: " + args.Uri)
 
-	def __on_navigation_completed(self, _: WebView2CompositionControl, args: CoreWebView2NavigationCompletedEventArgs):
+	def __on_navigation_completed(self, _: WebView2, args: CoreWebView2NavigationCompletedEventArgs):
 		print("Webview navigation completed, status: " + str(args.HttpStatusCode))
 
-	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2CompositionControl, args: CoreWebView2InitializationCompletedEventArgs):
+	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2, args: CoreWebView2InitializationCompletedEventArgs):
 		if not args.IsSuccess:
 			print_exception(WebViewException(args.InitializationException))
 			return
@@ -503,6 +509,23 @@ class WebViewWindow:
 				)
 
 		if debug_enabled: core.OpenDevToolsWindow()
+	
+	def __post_message(self, message: str):
+		assert self.__webview.CoreWebView2
+		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
+	def post_message(self, message: Any):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__post_message, (dumps(message, ensure_ascii=False, default=serialize_object),))
+	
+	def __execute_javascript(self, script: str):
+		assert self.__webview.CoreWebView2
+		return self.__webview.CoreWebView2.ExecuteScriptAsync(script)
+	def execute_javascript(self, script: str):
+		assert self.__dispatcher
+		task = _cross_thread_call(self.__dispatcher, self.__execute_javascript, (script,))
+		future = Future()
+		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
+		return future
 
 	def _get_wpf_window(self):
 		return self.__window

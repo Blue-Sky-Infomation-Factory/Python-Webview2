@@ -1,3 +1,4 @@
+from enum import Enum
 from inspect import isfunction, ismethod
 from traceback import print_exception
 from clr import AddReference
@@ -18,9 +19,10 @@ del self_path
 from System import EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
 from System.Threading import ApartmentState, Thread as CSharpThread, ParameterizedThreadStart
-from System.Windows import Application, ShutdownMode, Window
+from System.Windows import Application, ShutdownMode, Window, WindowState, WindowStyle
 from System.Windows.Controls import Grid # type: ignore
-from System.Windows.Media import Brushes
+from System.Windows.Media import Brushes, ImageSource
+from System.Windows.Media.Imaging import BitmapImage # type: ignore
 from System.Windows.Threading import Dispatcher # type: ignore
 
 from Microsoft.Web.WebView2.Core import( # type: ignore
@@ -170,6 +172,11 @@ class WebViewWindowInitializeParameters:
 		self.virtual_hosts = params.get("virtual_hosts", global_configuration.virtual_hosts)
 		self.web_api_permission_bypass = params.get("web_api_permission_bypass", global_configuration.web_api_permission_bypass)
 
+class WebViewWindowState(Enum):
+	NORMAL = WindowState.Normal
+	MINIMIZED = WindowState.Minimized
+	MAXIMIZED = WindowState.Maximized
+
 class WebViewWindow:
 	def __init__(self, app: WebViewApplication, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.__closed = False
@@ -177,6 +184,7 @@ class WebViewWindow:
 		self.__dispatcher = dispatcher
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self]()
+		self.__fullscreen: Optional[Tuple[WindowStyle, WindowState]] = None
 
 		window = self.__window = Window()
 		window.Title = params.get("title", configuration.title)
@@ -215,6 +223,59 @@ class WebViewWindow:
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None
 	
+	def __show(self):
+		self.__window.Show()
+	def show(self):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__show)
+	def __hide(self):
+		self.__window.Hide()
+	def hide(self):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__hide)
+	@property
+	def is_visible(self):
+		return self.__window.IsVisible
+	
+	@property
+	def is_fullscreen(self):
+		return bool(self.__fullscreen)
+	def __enter_fullscreen(self):
+		if self.__fullscreen: return
+		window = self.__window
+		self.__fullscreen = (window.WindowStyle, window.WindowState)
+		self.__window.WindowStyle = getattr(WindowStyle, "None")
+		self.__window.WindowState = WindowState.Maximized
+	def fullscreen(self):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__enter_fullscreen)
+	def __exit_fullscreen(self):
+		if not self.__fullscreen: return
+		window = self.__window
+		window.WindowStyle = self.__fullscreen[0]
+		window.WindowState = self.__fullscreen[1]
+		self.__fullscreen = None
+	def exit_fullscreen(self):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__exit_fullscreen)
+	def __get_state(self):
+		fullscreen = self.__fullscreen
+		return WebViewWindowState(fullscreen[1] if fullscreen else self.__window.WindowState)
+	@property
+	def state(self):
+		assert self.__dispatcher
+		return _cross_thread_call(self.__dispatcher, self.__get_state)
+	def __set_state(self, value: WindowState):
+		fullscreen = self.__fullscreen
+		if fullscreen:
+			self.__fullscreen = (fullscreen[0], value)
+		else:
+			self.__window.WindowState = value
+	@state.setter
+	def state(self, value: WebViewWindowState):
+		assert self.__dispatcher
+		_cross_thread_call(self.__dispatcher, self.__set_state, (value.value,))
+
 	@property
 	def closed(self): return self.__closed
 	@property

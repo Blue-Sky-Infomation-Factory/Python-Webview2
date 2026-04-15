@@ -3,7 +3,8 @@
 	"python.analysis.typeCheckingMode": "basic",
 	"python.analysis.extraPaths": [
 		"..\\pythonnet-stubs\\src",
-		"..\\python-microsoft-webview2-stubs\\src"
+		"..\\python-microsoft-webview2-stubs\\src",
+		".\\stubs"
 	],
 	"python-envs.defaultEnvManager": "ms-python.python:system",
 	"python-envs.pythonProjects": [

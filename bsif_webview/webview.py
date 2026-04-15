@@ -3,6 +3,7 @@ from enum import Enum
 from inspect import isfunction, ismethod
 from json import dumps
 from traceback import print_exception
+from .file_system_dialog import DirectoryPicker, DirectoryPickerOptions, OpenFilePicker, OpenFilePickerOptions, SaveFilePicker, SaveFilePickerOptions
 from clr import AddReference
 from os import getenv
 from os.path import dirname, join
@@ -538,10 +539,26 @@ class WebViewWindow:
 	def message_notifier(self):
 		return self.__message_notifier
 
-	def _get_wpf_window(self):
-		return self.__window
-_get_wpf_window = WebViewWindow._get_wpf_window
-del WebViewWindow._get_wpf_window
+	def show_open_file_picker(self, **options: Unpack[OpenFilePickerOptions]):
+		assert self.__dispatcher
+		picker = _cross_thread_call(self.__dispatcher, OpenFilePicker)
+		picker.set_options(options)
+		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))
+		return picker.parse_result()
+
+	def show_save_file_picker(self, **options: Unpack[SaveFilePickerOptions]):
+		assert self.__dispatcher
+		picker = _cross_thread_call(self.__dispatcher, SaveFilePicker)
+		picker.set_options(options)
+		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))
+		return picker.parse_result()
+	
+	def show_directory_picker(self, **options: Unpack[DirectoryPickerOptions]):
+		assert self.__dispatcher
+		picker = _cross_thread_call(self.__dispatcher, DirectoryPicker)
+		picker.set_options(options)
+		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))
+		return picker.parse_result()
 
 _running_application: Optional[WebViewApplication] = None
 def get_running_application():

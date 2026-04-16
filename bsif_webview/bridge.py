@@ -1,16 +1,15 @@
 from asyncio import get_event_loop, iscoroutine
 from threading import Thread
 from traceback import print_exception
-import clr
+from .helper import LIBRARYS, PACKAGE
+from clr import AddReference
 from inspect import isbuiltin, isfunction, ismethod
 from json import dumps, loads
-from os.path import dirname, join
+from os.path import join
 from typing import Any, Callable, Dict
 
-self_path = dirname(__file__)
-clr.AddReference(join(self_path, 'BSIF.WebView2Bridge.dll')) # type: ignore
-with open(self_path + "/bridge.js") as file: bridge_script = file.read()
-del self_path
+AddReference(join(LIBRARYS, 'BSIF.WebView2Bridge.dll'))
+with open(join(PACKAGE, "bridge.js")) as file: bridge_script = file.read()
 
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 

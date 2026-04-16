@@ -1,23 +1,25 @@
+from .helper import ARCHITECTURE, LIBRARYS, OS, PLATFORM_MAP, load_desktop_runtime_dll
+
+if ARCHITECTURE not in PLATFORM_MAP or OS != "Windows":
+	raise RuntimeError("Unsupported system.")
+
 from asyncio import Future
 from enum import Enum
 from inspect import isfunction, ismethod
 from json import dumps
 from traceback import print_exception
-from .file_system_dialog import DirectoryPicker, DirectoryPickerOptions, OpenFilePicker, OpenFilePickerOptions, SaveFilePicker, SaveFilePickerOptions
 from clr import AddReference
 from os import getenv
-from os.path import dirname, join
+from os.path import join
 from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, TypedDict, Unpack
 from bsif_utils.notifier import Notifier
 
-from .bridge import Bridge, serialize_object
-
 AddReference("wpf\\PresentationFramework")
-self_path = dirname(__file__)
-AddReference(join(self_path, "Microsoft.Web.WebView2.Core.dll"))
-AddReference(join(self_path, "Microsoft.Web.WebView2.Wpf.dll"))
-del self_path
+webview2_dlls = join(LIBRARYS, "webview2")
+AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Core.dll"))
+AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Wpf.dll"))
+del webview2_dlls
 
 from System import Action, EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
@@ -40,6 +42,9 @@ from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2
 )
 from Microsoft.Web.WebView2.Wpf import CoreWebView2CreationProperties, WebView2 # type: ignore
+
+from .bridge import Bridge, serialize_object
+from .file_system_dialog import DirectoryPicker, DirectoryPickerOptions, OpenFilePicker, OpenFilePickerOptions, SaveFilePicker, SaveFilePickerOptions
 
 class WebViewException(Exception):
 	def __init__(self, exception: CSException):
@@ -484,8 +489,8 @@ class WebViewWindow:
 
 	def __on_webview_ready(self, init_params:WebViewWindowInitializeParameters, webview: WebView2, args: CoreWebView2InitializationCompletedEventArgs):
 		if not args.IsSuccess:
-			print_exception(WebViewException(args.InitializationException))
-			return
+			print(args.InitializationException)
+			raise WebViewException(args.InitializationException)
 		core = webview.CoreWebView2
 		assert core
 		core.NewWindowRequested += self.__on_new_window_request

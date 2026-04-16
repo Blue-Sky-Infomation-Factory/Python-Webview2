@@ -1,4 +1,4 @@
-from .helper import ARCHITECTURE, LIBRARYS, OS, PLATFORM_MAP, load_desktop_runtime_dll
+from .helper import ARCHITECTURE, LIBRARIES, OS, PLATFORM_MAP, load_desktop_runtime_dll
 
 if ARCHITECTURE not in PLATFORM_MAP or OS != "Windows":
 	raise RuntimeError("Unsupported system.")
@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, Type
 from bsif_utils.notifier import Notifier
 
 AddReference("wpf\\PresentationFramework")
-webview2_dlls = join(LIBRARYS, "webview2")
+webview2_dlls = join(LIBRARIES, "webview2")
 AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Core.dll"))
 AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Wpf.dll"))
 del webview2_dlls

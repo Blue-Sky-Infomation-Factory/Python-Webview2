@@ -4,7 +4,7 @@ from os import listdir
 from platform import machine, system
 
 PACKAGE = dirname(__file__)
-LIBRARYS = join(PACKAGE, "libs")
+LIBRARIES = join(PACKAGE, "libs")
 ARCHITECTURE = machine()
 OS = system()
 PLATFORM_MAP = {

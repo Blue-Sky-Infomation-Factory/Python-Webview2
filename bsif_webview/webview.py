@@ -1,4 +1,4 @@
-from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP
+from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP, load_desktop_runtime_dll
 
 if ARCHITECTURE not in PLATFORM_MAP:
 	raise RuntimeError("Unsupported platform.")
@@ -16,11 +16,11 @@ from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, Type
 from weakref import WeakKeyDictionary
 from bsif_utils.notifier import Notifier
 
-AddReference("wpf\\PresentationFramework")
+load_desktop_runtime_dll("WindowsBase.dll")
+load_desktop_runtime_dll("PresentationFramework.dll")
 webview2_dlls = join(LIBRARIES, "webview2")
 AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Core.dll"))
 AddReference(join(webview2_dlls, "Microsoft.Web.WebView2.Wpf.dll"))
-del webview2_dlls
 
 from System import Action, EventArgs, Exception as CSException, Uri, Func, Object as CSObject
 from System.Drawing import Color # type: ignore
@@ -33,6 +33,7 @@ from System.Windows.Media.Imaging import BitmapImage # type: ignore
 from System.Windows.Threading import Dispatcher # type: ignore
 
 from Microsoft.Web.WebView2.Core import( # type: ignore
+	CoreWebView2Environment,
 	CoreWebView2HostResourceAccessKind,
 	CoreWebView2NavigationCompletedEventArgs,
 	CoreWebView2NavigationStartingEventArgs,
@@ -43,6 +44,9 @@ from Microsoft.Web.WebView2.Core import( # type: ignore
 	CoreWebView2
 )
 from Microsoft.Web.WebView2.Wpf import CoreWebView2CreationProperties, WebView2 # type: ignore
+
+CoreWebView2Environment.SetLoaderDllFolderPath(join(webview2_dlls, "runtimes", PLATFORM_MAP[ARCHITECTURE], "native"))
+del webview2_dlls
 
 from .bridge import Bridge, serialize_object
 from .file_system_dialog import DirectoryPicker, DirectoryPickerOptions, OpenFilePicker, OpenFilePickerOptions, SaveFilePicker, SaveFilePickerOptions

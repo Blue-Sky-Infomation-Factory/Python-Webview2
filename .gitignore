@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 *.bak
 /.venv312
+/bsif_webview/libs/dotnet

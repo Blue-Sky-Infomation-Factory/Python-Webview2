@@ -5,6 +5,22 @@ from subprocess import run
 from urllib.request import urlopen
 from winreg import OpenKey, QueryValueEx, HKEY_LOCAL_MACHINE
 
+class DotNetRuntimeInfo:
+	def __init__(self, info_string: str):
+		end = info_string.index(" ")
+		self.type = info_string[:end]
+		index = end + 1
+		end = info_string.index(" ", index)
+		version_string = info_string[index:end]
+		self.version = tuple(map(int, version_string.split(".")))
+		self.location = join(info_string[end + 2:-1], version_string)
+	@classmethod
+	def list(cls):
+		try:
+			return [cls(info) for info in run("dotnet --list-runtimes", capture_output=True).stdout.decode("utf-8").splitlines() if info]
+		except:
+			return []
+
 def check_environment():
 	os = system() == "Windows"
 	result={
@@ -15,13 +31,10 @@ def check_environment():
 	}
 	if not os: return result
 	# check dotnet
-	try:
-		result["dotnet"]=QueryValueEx(
-			OpenKey(HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"),
-			'Release'
-		)[0] >= 533320 # .NET 4.8.1
-		# 4.6.2: 394802
-	except: pass
+	for info in DotNetRuntimeInfo.list():
+		if info.type == "Microsoft.WindowsDesktop.App" and info.version[0] >= 10:
+			result["dotnet"]=True
+			break
 	# check webview
 	try:
 		result["webview_version"]=QueryValueEx(
@@ -33,9 +46,17 @@ def check_environment():
 	return result
 
 def install_webview():
-	resource=urlopen("https://go.microsoft.com/fwlink/p/?LinkId=2124703")
-	path=join(getenv("TEMP"), "MicrosoftEdgeWebview2Setup.exe") # type: ignore
+	resource = urlopen("https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+	path = join(getenv("TEMP"), "MicrosoftEdgeWebview2Setup.exe") # type: ignore
 	with open(path, "wb") as file: file.write(resource.read())
-	code=run(path).returncode
+	code = run(path).returncode
+	remove(path)
+	return code
+
+def install_dotnet_desktop():
+	resource = urlopen("https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.6/windowsdesktop-runtime-10.0.6-win-x64.exe")
+	path = join(getenv("TEMP"), "DotnetWindowsDesktopRuntime10.0.6.exe") # type: ignore
+	with open(path, "wb") as file: file.write(resource.read())
+	code = run((path, "/quiet", "/norestart")).returncode
 	remove(path)
 	return code

@@ -27,7 +27,7 @@ def find_desktop_runtime_dll(dll_name: str):
 			dll = join(path, dll_name)
 			if isfile(dll):
 				return dll
-	dll = join(PACKAGE, "libs", dll_name)
+	dll = join(PACKAGE, "libs", "dotnet", dll_name)
 	if isfile(dll):
 		return dll
 	return None

@@ -1,9 +1,12 @@
-from os import getenv, remove
-from os.path import join
+from os import getenv, remove, mkdir
+from os.path import join, dirname, exists, abspath
 from platform import system
+from shutil import copyfile, copytree, rmtree
 from subprocess import run
 from urllib.request import urlopen
 from winreg import OpenKey, QueryValueEx, HKEY_LOCAL_MACHINE
+
+BUNDLED_DOTNET_RUNTIME = join(abspath(join(dirname(__file__), "..", "bsif_webview")), "libs", "dotnet")
 
 class DotNetRuntimeInfo:
 	def __init__(self, info_string: str):
@@ -60,3 +63,44 @@ def install_dotnet_desktop():
 	code = run((path, "/quiet", "/norestart")).returncode
 	remove(path)
 	return code
+
+def bundle_dotnet_runtime(minimal: bool = False):
+	from sys import modules
+	if "bsif_webview.webview" in modules:
+		print(f"bundle_dotnet_runtime() cannot work properly in current environment. Try using 'python -m bsif_webview_tool bundle_dotnet_runtime{' --minimal' if minimal else ''}'.")
+		return
+	runtime = None
+	runtime_list = DotNetRuntimeInfo.list()
+	for info in runtime_list:
+		if info.type == "Microsoft.WindowsDesktop.App" and info.version[0] >= 10:
+			runtime = info.location
+			break
+	if not runtime:
+		raise FileNotFoundError("Cannot find dotnet desktop runtime 10 or higher")
+	if exists(BUNDLED_DOTNET_RUNTIME):
+		rmtree(BUNDLED_DOTNET_RUNTIME)
+	if minimal:
+		mkdir(BUNDLED_DOTNET_RUNTIME)
+		for file in [
+			"D3DCompiler_47_cor3.dll",
+			"DirectWriteForwarder.dll",
+			"PresentationCore.dll",
+			"PresentationFramework.Classic.dll",
+			"PresentationFramework.dll",
+			"PresentationNative_cor3.dll",
+			"ReachFramework.dll",
+			"System.Configuration.ConfigurationManager.dll",
+			"System.IO.Packaging.dll",
+			"System.Printing.dll",
+			"System.Private.Windows.Core.dll",
+			"System.Windows.Extensions.dll",
+			"System.Windows.Primitives.dll",
+			"System.Xaml.dll",
+			"UIAutomationProvider.dll",
+			"UIAutomationTypes.dll",
+			"WindowsBase.dll",
+			"wpfgfx_cor3.dll"
+		]:
+			copyfile(join(runtime, file), join(BUNDLED_DOTNET_RUNTIME, file))
+	else:
+		copytree(runtime, BUNDLED_DOTNET_RUNTIME)

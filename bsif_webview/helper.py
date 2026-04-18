@@ -13,10 +13,14 @@ PLATFORM_MAP = {
 	"x86": "win-x86",
 	"x86_64": "win-x64",
 }
+BUNDLED_DOTNET_RUNTIME = join(LIBRARIES, "dotnet")
 DOTNET_DESKTOP_RUNTIME = "C:/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App"
 def version_sort(version_str: str):
 	return tuple(map(int, version_str.split('.')))
 def find_desktop_runtime_dll(dll_name: str):
+	dll = join(BUNDLED_DOTNET_RUNTIME, dll_name)
+	if isfile(dll):
+		return dll
 	if isdir(DOTNET_DESKTOP_RUNTIME):
 		versions = listdir(DOTNET_DESKTOP_RUNTIME)
 		versions.sort(key=version_sort, reverse=True)
@@ -27,9 +31,6 @@ def find_desktop_runtime_dll(dll_name: str):
 			dll = join(path, dll_name)
 			if isfile(dll):
 				return dll
-	dll = join(PACKAGE, "libs", "dotnet", dll_name)
-	if isfile(dll):
-		return dll
 	return None
 
 def load_desktop_runtime_dll(dll_name: str):

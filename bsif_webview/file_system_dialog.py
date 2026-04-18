@@ -1,15 +1,14 @@
 from typing import Iterable, List, Optional, Tuple, TypedDict
 from re import compile
-from os.path import dirname, join
+from os.path import join
+from .helper import LIBRARIES
 from clr import AddReference
 
 AddReference("wpf\\PresentationFramework")
-self_path = dirname(__file__)
+AddReference(join(LIBRARIES, "windows_api_code_pack", "Microsoft.WindowsAPICodePack.Shell.dll"))
 
-AddReference(join(self_path, "Microsoft.WindowsAPICodePack.Shell.dll"))
-
-from Microsoft.WindowsAPICodePack.Dialogs import CommonFileDialog, CommonFileDialogFilter, CommonFileDialogFilterCollection, CommonOpenFileDialog, CommonSaveFileDialog, CommonFileDialogResult # type: ignore
 from System.Windows import Window # type: ignore
+from Microsoft.WindowsAPICodePack.Dialogs import CommonFileDialog, CommonFileDialogFilter, CommonFileDialogFilterCollection, CommonOpenFileDialog, CommonSaveFileDialog, CommonFileDialogResult # type: ignore
 
 class DialogBase[T: CommonFileDialog]:
 	def __init__(self, dialog_class: type[T]):

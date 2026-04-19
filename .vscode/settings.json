@@ -4,6 +4,7 @@
 	"python.analysis.extraPaths": [
 		"..\\pythonnet-stubs\\src",
 		"..\\python-microsoft-webview2-stubs\\src",
+		"..\\Python-Webview2-Bridge\\stubs",
 		".\\stubs"
 	],
 	"python-envs.defaultEnvManager": "ms-python.python:system",

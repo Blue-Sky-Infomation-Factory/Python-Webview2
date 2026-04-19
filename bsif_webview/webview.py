@@ -103,10 +103,12 @@ def _cross_thread_executor(method: Callable, args: Tuple):
 	except Exception as e: return (False, e)
 	return (True, result)
 _cross_thread_delegate = Func[CSObject, CSObject, CSObject](_cross_thread_executor) # type: ignore
-def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], RT], args: Tuple[*AT] = ()) -> RT:
-	result: Tuple[Literal[True], RT] | Tuple[Literal[False], Exception] = dispatcher.Invoke(_cross_thread_delegate, (method, args)) # type: ignore
-	if result[0] == True: return result[1] # type: ignore
-	else: raise result[1] # type: ignore
+def _cross_thread_call[*AT, RT](dispatcher: Optional[Dispatcher], method: Callable[[*AT], RT], args: Tuple[*AT] = ()) -> RT:
+	if not dispatcher: raise Exception("UI object is disposed.")
+	result: Optional[Tuple[Literal[True], RT] | Tuple[Literal[False], Exception]] = dispatcher.Invoke(_cross_thread_delegate, (method, args))  # type: ignore
+	if result is None: raise Exception("UI object is disposed.")
+	if result[0] == True: return result[1]
+	else: raise result[1]
 
 _window_map: WeakKeyDictionary[Window, "WebViewWindow"] = WeakKeyDictionary()
 
@@ -274,18 +276,14 @@ class WebViewWindow:
 		closed_event += on_closed
 		closed_event += self.__on_window_closed
 		if not params.get("hide"): window.Show()
-		# min_size: Tuple[int, int] = (384, 256),
-		# max_size: Optional[Tuple[int, int]] = None
 	
 	def __show(self):
 		self.__window.Show()
 	def show(self):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__show)
 	def __hide(self):
 		self.__window.Hide()
 	def hide(self):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__hide)
 	@property
 	def is_visible(self):
@@ -301,7 +299,6 @@ class WebViewWindow:
 		self.__window.WindowStyle = getattr(WindowStyle, "None")
 		self.__window.WindowState = WindowState.Maximized
 	def fullscreen(self):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__enter_fullscreen)
 	def __exit_fullscreen(self):
 		if not self.__fullscreen: return
@@ -310,14 +307,12 @@ class WebViewWindow:
 		window.WindowState = self.__fullscreen[1]
 		self.__fullscreen = None
 	def exit_fullscreen(self):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__exit_fullscreen)
 	def __get_state(self):
 		fullscreen = self.__fullscreen
 		return WebViewWindowState(fullscreen[1] if fullscreen else self.__window.WindowState)
 	@property
 	def state(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_state)
 	def __set_state(self, value: WindowState):
 		fullscreen = self.__fullscreen
@@ -327,7 +322,6 @@ class WebViewWindow:
 			self.__window.WindowState = value
 	@state.setter
 	def state(self, value: WebViewWindowState):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_state, (value.value,))
 
 	@property
@@ -337,107 +331,90 @@ class WebViewWindow:
 	def __close(self):
 		self.__window.Close()
 	def close(self):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__close)
 
 	def __get_min_width(self):
 		return self.__window.MinWidth
 	@property
 	def min_width(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_min_width)
 	def __set_min_width(self, value: float):
 		self.__window.MinWidth = value
 	@min_width.setter
 	def min_width(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_min_width, (value,))
 	def __get_min_height(self):
 		return self.__window.MinHeight
 	@property
 	def min_height(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_min_height)
 	def __set_min_height(self, value: float):
 		self.__window.MinHeight = value
 	@min_height.setter
 	def min_height(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_min_height, (value,))
 
 	def __get_max_width(self):
 		return self.__window.MaxWidth
 	@property
 	def max_width(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_max_width)
 	def __set_max_width(self, value: float):
 		self.__window.MaxWidth = value
 	@max_width.setter
 	def max_width(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_max_width, (value,))
 	def __get_max_height(self):
 		return self.__window.MaxHeight
 	@property
 	def max_height(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_max_height)
 	def __set_max_height(self, value: float):
 		self.__window.MaxHeight = value
 	@max_height.setter
 	def max_height(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_max_height, (value,))
 
 	def __get_width(self):
 		return self.__window.Width
 	@property
 	def width(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_width)
 	def __set_width(self, value: float):
 		self.__window.Width = value
 	@width.setter
 	def width(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_width, (value,))
 	def __get_height(self):
 		return self.__window.Height
 	@property
 	def height(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_height)
 	def __set_height(self, value: float):
 		self.__window.Height = value
 	@height.setter
 	def height(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_height, (value,))
 
 	def __get_top(self):
 		return self.__window.Top
 	@property
 	def top(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_top)
 	def __set_top(self, value: float):
 		self.__window.Top = value
 	@top.setter
 	def top(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_top, (value,))
 	def __get_left(self):
 		return self.__window.Left
 	@property
 	def left(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_left)
 	def __set_left(self, value: float):
 		self.__window.Left = value
 	@left.setter
 	def left(self, value: float):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_left, (value,))
 
 	@property
@@ -445,7 +422,6 @@ class WebViewWindow:
 	def __navigate_uri_call(self, value): self.__webview.Source = Uri(value)
 	@navigate_uri.setter
 	def navigate_uri(self, value: str):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__navigate_uri_call, (value,))
 		self.__navigate_uri = value
 
@@ -453,7 +429,6 @@ class WebViewWindow:
 		return self.__window.Icon
 	@property
 	def icon(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_icon)
 	def __set_icon(self, value: Optional[ImageSource]):
 		self.__window.Icon = value
@@ -467,21 +442,17 @@ class WebViewWindow:
 				raise ValueError("Cannot set icon to non-frozen ImageSource")
 		elif value is not None:
 			raise ValueError("Value must be str or ImageSource")
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_icon, (value,))
 	
 	def __get_resizable(self):
 		return self.__window.ResizeMode != ResizeMode.NoResize
 	@property
 	def resizable(self):
-		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, self.__get_resizable)
 	def __set_resizable(self, value: bool):
-		assert self.__dispatcher
 		self.__window.ResizeMode = ResizeMode.CanResize if value else ResizeMode.NoResize
 	@resizable.setter	
 	def resizable(self, value: bool):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__set_resizable, (value,))
 
 	def __on_window_closed(self, _, args: EventArgs):
@@ -539,19 +510,16 @@ class WebViewWindow:
 		assert self.__webview.CoreWebView2
 		self.__webview.CoreWebView2.PostWebMessageAsJson(message)
 	def post_message(self, message: Any):
-		assert self.__dispatcher
 		_cross_thread_call(self.__dispatcher, self.__post_message, (dumps(message, ensure_ascii=False, default=serialize_object),))
 	
 	def __execute_javascript(self, script: str):
 		assert self.__webview.CoreWebView2
 		return self.__webview.CoreWebView2.ExecuteScriptAsync(script)
 	def execute_javascript(self, script: str):
-		assert self.__dispatcher
 		task = _cross_thread_call(self.__dispatcher, self.__execute_javascript, (script,))
 		future = Future()
 		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
 		return future
-	
 	def __on_javascript_message(self, _, args):
 		self.__message_notifier.trigger(args.WebMessageAsJson, args.AdditionalObjects)
 	@property
@@ -559,21 +527,18 @@ class WebViewWindow:
 		return self.__message_notifier
 
 	def show_open_file_picker(self, **options: Unpack[OpenFilePickerOptions]):
-		assert self.__dispatcher
 		picker = _cross_thread_call(self.__dispatcher, OpenFilePicker)
 		picker.set_options(options)
 		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))
 		return picker.parse_result()
 
 	def show_save_file_picker(self, **options: Unpack[SaveFilePickerOptions]):
-		assert self.__dispatcher
 		picker = _cross_thread_call(self.__dispatcher, SaveFilePicker)
 		picker.set_options(options)
 		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))
 		return picker.parse_result()
 	
 	def show_directory_picker(self, **options: Unpack[DirectoryPickerOptions]):
-		assert self.__dispatcher
 		picker = _cross_thread_call(self.__dispatcher, DirectoryPicker)
 		picker.set_options(options)
 		_cross_thread_call(self.__dispatcher, picker.show_dialog, (self.__window,))

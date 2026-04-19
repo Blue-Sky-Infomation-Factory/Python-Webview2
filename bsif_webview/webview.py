@@ -1,7 +1,7 @@
-from .helper import ARCHITECTURE, LIBRARIES, OS, PLATFORM_MAP, load_desktop_runtime_dll
+from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP, load_desktop_runtime_dll
 
-if ARCHITECTURE not in PLATFORM_MAP or OS != "Windows":
-	raise RuntimeError("Unsupported system.")
+if ARCHITECTURE not in PLATFORM_MAP:
+	raise RuntimeError("Unsupported platform.")
 
 from asyncio import Future
 from enum import Enum
@@ -13,6 +13,7 @@ from os import getenv
 from os.path import join
 from threading import Lock, current_thread, main_thread
 from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, TypedDict, Unpack
+from weakref import WeakKeyDictionary
 from bsif_utils.notifier import Notifier
 
 AddReference("wpf\\PresentationFramework")
@@ -107,6 +108,8 @@ def _cross_thread_call[*AT, RT](dispatcher: Dispatcher, method: Callable[[*AT], 
 	if result[0] == True: return result[1] # type: ignore
 	else: raise result[1] # type: ignore
 
+_window_map: WeakKeyDictionary[Window, "WebViewWindow"] = WeakKeyDictionary()
+
 class WebViewApplication:
 	@property
 	def stop_at_main_window_closed(self): return self.__stop_at_main_window_closed
@@ -120,6 +123,7 @@ class WebViewApplication:
 	def main_window(self, value):
 		if value is not None and not isinstance(value, WebViewWindow): raise TypeError("Not a WebViewWindow")
 		if value and value.closed: raise ValueError("Cannot set a closed window as main window")
+		if not self.__running: raise Exception("WebViewApplication is not running.")
 		self.__main_window = value
 
 	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
@@ -129,10 +133,16 @@ class WebViewApplication:
 		self.__dispatcher: Optional[Dispatcher] = None
 		self.__stop_at_main_window_closed = params.get("stop_at_main_window_closed", True)
 		self.__main_window: Optional[WebViewWindow] = None
+		self.__stopping = False
 
+	def __on_window_closed(self, window: Window, _):
+		if _window_map[window] == self.main_window:
+			self.__main_window = None
+			if self.__stop_at_main_window_closed:
+				self.__stop()
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
 		assert self.__dispatcher
-		return _cross_thread_call(self.__dispatcher, WebViewWindow, (self, self.__dispatcher, self.__configuration, params))
+		return _cross_thread_call(self.__dispatcher, WebViewWindow, (self.__dispatcher, self.__configuration, params, self.__on_window_closed))
 
 	def __run(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
 		self.__running = True
@@ -166,9 +176,11 @@ class WebViewApplication:
 		thread.Start((main, params))
 		thread.Join()
 		with _state_lock:
-			self.__running = False
+			self.__running = self.__stopping = False
 			_running_application = self.__dispatcher = None
 	def __stop(self):
+		if self.__stopping: return
+		self.__stopping = True
 		assert self.__application
 		self.__application.Shutdown()
 	def stop(self):
@@ -193,15 +205,15 @@ class WebViewWindowState(Enum):
 _execute_javascript_delegate = Action[CSTask[str]]
 
 class WebViewWindow:
-	def __init__(self, app: WebViewApplication, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
+	def __init__(self, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters, on_closed: Callable[[Window, EventArgs], None]):
 		self.__closed = False
-		self.__application = app
 		self.__dispatcher = dispatcher
 		self.__message_notifier = Notifier()
 		self.__on_closed = Notifier[Self]()
 		self.__fullscreen: Optional[Tuple[WindowStyle, WindowState]] = None
 
 		window = self.__window = Window()
+		_window_map[window] = self
 		window.Title = params.get("title", configuration.title)
 
 		size = params.get("min_size")
@@ -258,7 +270,9 @@ class WebViewWindow:
 		layout.Children.Add(webview)
 		window.Content = layout
 
-		window.Closed += self.__on_window_closed
+		closed_event = window.Closed
+		closed_event += on_closed
+		closed_event += self.__on_window_closed
 		if not params.get("hide"): window.Show()
 		# min_size: Tuple[int, int] = (384, 256),
 		# max_size: Optional[Tuple[int, int]] = None

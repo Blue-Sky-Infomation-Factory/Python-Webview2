@@ -1,10 +1,26 @@
 from threading import Thread
 from time import sleep, time
 from os.path import dirname
+from asyncio import sleep as async_sleep
+
 
 from bsif_webview import WebViewApplication
 
 app = WebViewApplication(debug_enabled=True)
+
+
+
+async def async_call_test(error: bool = False):
+	await async_sleep(5)
+	if error:
+		raise ValueError("Test error")
+	else:
+		return "hello world"
+
+api_test = {
+	"asyncCall": async_call_test,
+	"syncCall": lambda x = None: x,
+}
 
 def delay_test():
 	for s in range(5, 0, -1):
@@ -19,7 +35,7 @@ def delay_test():
 	s = time()
 	print(window.width)
 	print(f"{time() - s}s")
-	app.stop()
+	# app.stop()
 
 # def async_agent(method, args = (), kargs = {}):
 # 	c: Coroutine = method(*args, **kargs)
@@ -28,4 +44,4 @@ def delay_test():
 # Thread(None, async_agent, args=(delay_test,)).start()
 Thread(None, delay_test).start()
 
-app.start(title="test")
+app.start(title="test", api=api_test)

@@ -1,4 +1,4 @@
-from asyncio import get_event_loop, iscoroutine
+from asyncio import iscoroutine, new_event_loop
 from threading import Thread
 from traceback import print_exception
 from .helper import LIBRARIES, PACKAGE
@@ -10,8 +10,8 @@ from typing import Any, Callable, Dict
 
 AddReference(join(LIBRARIES, 'BSIF.WebView2Bridge.dll'))
 with open(join(PACKAGE, "bridge.js")) as file: bridge_script = file.read()
-
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
+from System import Exception as CSException # type: ignore
 
 def serialize_object(object: object): return object.__dict__
 
@@ -32,14 +32,14 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 def async_call_thread(function: Callable, args_json: str, async_object ):
 	try:
 		result=function(*loads(args_json))
-		if (iscoroutine(result)): result=get_event_loop().run_until_complete(result)
-	except BaseException as error:
-		async_object.SetResult("#" + dumps([error.__class__.__name__, str(error)], ensure_ascii=False))
+		if (iscoroutine(result)): result=new_event_loop().run_until_complete(result)
+	except Exception as error:
+		async_object.SetException(CSException(dumps([error.__class__.__name__, str(error)], ensure_ascii=False)))
 		print_exception(error)
 		return
 	try: async_object.SetResult(dumps(result, ensure_ascii=False, default=serialize_object))
 	except BaseException as error:
-		async_object.SetResult("")
+		async_object.SetException(CSException("null"))
 		print_exception(error)
 
 class Bridge:
@@ -53,6 +53,15 @@ class Bridge:
 		))
 	
 	def __sync_call_handler(self, method_name: str, args_json: str):
-		return dumps(self.__api[method_name](*loads(args_json)), ensure_ascii=False, default=serialize_object)
+		try:
+			result = self.__api[method_name](*loads(args_json))
+		except Exception as error:
+			print_exception(error)
+			raise Exception(dumps([error.__class__.__name__, str(error)], ensure_ascii=False))
+		try:
+			return dumps(result, ensure_ascii=False, default=serialize_object)
+		except BaseException as error:
+			print_exception(error)
+			raise Exception("null")
 	def __async_call_handler(self, method_name: str, args_json: str, async_object):
 		Thread(None, async_call_thread, method_name, (self.__api[method_name], args_json, async_object), daemon=True).start()

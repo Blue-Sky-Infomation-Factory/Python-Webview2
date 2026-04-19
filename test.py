@@ -1,8 +1,8 @@
 from threading import Thread
-from time import sleep
+from time import sleep, time
 from os.path import dirname
 
-from bsif_webview.webview import WebViewApplication
+from bsif_webview import WebViewApplication
 
 app = WebViewApplication(debug_enabled=True)
 
@@ -16,6 +16,9 @@ def delay_test():
 	result = window.show_directory_picker(title="Select a file", initial_directory=dirname(__file__), multiple=True, default_directory_name="test")
 	if result:
 		print(result.directories)
+	s = time()
+	print(window.width)
+	print(f"{time() - s}s")
 	app.stop()
 
 # def async_agent(method, args = (), kargs = {}):

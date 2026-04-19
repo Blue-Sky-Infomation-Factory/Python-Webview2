@@ -114,19 +114,25 @@ _window_map: WeakKeyDictionary[Window, "WebViewWindow"] = WeakKeyDictionary()
 
 class WebViewApplication:
 	@property
-	def stop_at_main_window_closed(self): return self.__stop_at_main_window_closed
+	def stop_at_main_window_closed(self):
+		with self.__lock:
+			return self.__stop_at_main_window_closed
 	@stop_at_main_window_closed.setter
 	def stop_at_main_window_closed(self, value: bool):
-		self.__stop_at_main_window_closed = bool(value)
+		with self.__lock:
+			self.__stop_at_main_window_closed = bool(value)
 
 	@property
-	def main_window(self): return self.__main_window
+	def main_window(self):
+		with self.__lock:
+			return self.__main_window
 	@main_window.setter
 	def main_window(self, value):
 		if value is not None and not isinstance(value, WebViewWindow): raise TypeError("Not a WebViewWindow")
 		if value and value.closed: raise ValueError("Cannot set a closed window as main window")
-		if not self.__running: raise Exception("WebViewApplication is not running.")
-		self.__main_window = value
+		with self.__lock:
+			if not self.__running or self.__stopping: raise Exception("WebViewApplication is not running.")
+			self.__main_window = value
 
 	def __init__(self, **params: Unpack[WebViewApplicationParameters]):
 		self.__configuration = WebViewGlobalConfiguration(params)
@@ -136,33 +142,40 @@ class WebViewApplication:
 		self.__stop_at_main_window_closed = params.get("stop_at_main_window_closed", True)
 		self.__main_window: Optional[WebViewWindow] = None
 		self.__stopping = False
+		self.__lock = Lock()
 
 	def __on_window_closed(self, window: Window, _):
-		if _window_map[window] == self.main_window:
-			self.__main_window = None
-			if self.__stop_at_main_window_closed:
-				self.__stop()
+		with self.__lock:
+			if _window_map[window] == self.__main_window:
+				self.__main_window = None
+				if self.__stop_at_main_window_closed:
+					self.__stop()
 	def create_window(self, **params: Unpack[WebViewWindowParameters]):
 		assert self.__dispatcher
 		return _cross_thread_call(self.__dispatcher, WebViewWindow, (self.__dispatcher, self.__configuration, params, self.__on_window_closed))
 
 	def __run(self, params: Tuple[Optional[Callable[[Self], Any]], WebViewWindowParameters]):
 		self.__running = True
+		_state_lock.release()
 		app = self.__application = Application()
 		self.__dispatcher = app.Dispatcher
-		_state_lock.release()
 		[main, options] = params
 		app.ShutdownMode = ShutdownMode.OnExplicitShutdown
 		if main:
+			self.__lock.release()
 			try: main(self)
 			except Exception as e:
 				print_exception(e)
 				return
-		else: self.__main_window = self.create_window(**options)
+		else:
+			self.__main_window = self.create_window(**options)
+			self.__lock.release()
 		app.Run()
 
 	def start(self, main: Optional[Callable[[Self], Any]] = None, **params: Unpack[WebViewWindowParameters]):
 		global _running_application
+		self_lock = self.__lock
+		self_lock.acquire()
 		_state_lock.acquire()
 		try:
 			if main is not None and not isfunction(main) and not ismethod(main): raise TypeError("Argument 'main' is not a valid callable object.")
@@ -171,13 +184,14 @@ class WebViewApplication:
 			if _running_application: raise Exception("A WebViewApplication is already running.")
 		except Exception as e:
 			_state_lock.release()
+			self_lock.release()
 			raise e
 		_running_application = self
 		thread = CSharpThread(ParameterizedThreadStart(self.__run))
 		thread.SetApartmentState(ApartmentState.STA)
 		thread.Start((main, params))
 		thread.Join()
-		with _state_lock:
+		with _state_lock, self_lock:
 			self.__running = self.__stopping = False
 			_running_application = self.__dispatcher = None
 	def __stop(self):
@@ -186,15 +200,14 @@ class WebViewApplication:
 		assert self.__application
 		self.__application.Shutdown()
 	def stop(self):
-		with _state_lock:
+		with self.__lock:
 			if self.__running:
-				assert self.__application and self.__dispatcher
+				assert self.__dispatcher
 				_cross_thread_call(self.__dispatcher, self.__stop)
 
 class WebViewWindowInitializeParameters:
 	def __init__(self, global_configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters):
 		self.debug_enabled = global_configuration.debug_enabled
-		# self.private_mode = params.get("private_mode", global_configuration.private_mode)
 		self.user_agent = params.get("user_agent", global_configuration.user_agent)
 		self.virtual_hosts = params.get("virtual_hosts", global_configuration.virtual_hosts)
 		self.web_api_permission_bypass = params.get("web_api_permission_bypass", global_configuration.web_api_permission_bypass)

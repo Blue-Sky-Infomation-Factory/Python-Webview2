@@ -6,7 +6,7 @@ if ARCHITECTURE not in PLATFORM_MAP:
 from asyncio import Future
 from enum import Enum
 from inspect import isfunction, ismethod
-from json import dumps
+from json import dumps, loads
 from traceback import print_exception
 from clr import AddReference
 from os import getenv
@@ -223,7 +223,7 @@ class WebViewWindow:
 	def __init__(self, dispatcher: Dispatcher, configuration: WebViewGlobalConfiguration, params: WebViewWindowParameters, on_closed: Callable[[Window, EventArgs], None]):
 		self.__closed = False
 		self.__dispatcher = dispatcher
-		self.__message_notifier = Notifier()
+		self.__message_notifier = Notifier[Any]()
 		self.__on_closed = Notifier[Self]()
 		self.__fullscreen: Optional[Tuple[WindowStyle, WindowState]] = None
 
@@ -534,7 +534,7 @@ class WebViewWindow:
 		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
 		return future
 	def __on_javascript_message(self, _, args):
-		self.__message_notifier.trigger(args.WebMessageAsJson, args.AdditionalObjects)
+		self.__message_notifier.trigger(loads(args.WebMessageAsJson))
 	@property
 	def message_notifier(self):
 		return self.__message_notifier

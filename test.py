@@ -16,10 +16,14 @@ async def async_call_test(error: bool = False):
 		raise ValueError("Test error")
 	else:
 		return "hello world"
-
+def sync_call_test(error: bool = False):
+	if error:
+		raise ValueError("Test error")
+	else:
+		return "hello world"
 api_test = {
 	"asyncCall": async_call_test,
-	"syncCall": lambda x = None: x,
+	"syncCall": sync_call_test
 }
 
 def delay_test():
@@ -29,12 +33,8 @@ def delay_test():
 	print("Test mission running")
 	window = app.main_window
 	assert window
-	result = window.show_directory_picker(title="Select a file", initial_directory=dirname(__file__), multiple=True, default_directory_name="test")
-	if result:
-		print(result.directories)
-	s = time()
-	print(window.width)
-	print(f"{time() - s}s")
+	window.post_message("hello world")
+	window.message_notifier.add_handler(lambda x: print(type(x)))
 	# app.stop()
 
 # def async_agent(method, args = (), kargs = {}):
@@ -44,4 +44,4 @@ def delay_test():
 # Thread(None, async_agent, args=(delay_test,)).start()
 Thread(None, delay_test).start()
 
-app.start(title="test", api=api_test)
+app.start(title="test", api=api_test, private_mode=False)

@@ -1,7 +1,6 @@
-from os import getenv, remove, mkdir
-from os.path import join, dirname, exists, abspath
+from os import getenv, remove
+from os.path import join, dirname, abspath
 from platform import system
-from shutil import copyfile, copytree, rmtree
 from subprocess import run
 from urllib.request import urlopen
 from winreg import OpenKey, QueryValueEx, HKEY_LOCAL_MACHINE
@@ -34,10 +33,11 @@ def check_environment():
 	}
 	if not os: return result
 	# check dotnet
-	for info in DotNetRuntimeInfo.list():
-		if info.type == "Microsoft.WindowsDesktop.App" and info.version[0] >= 10:
-			result["dotnet"]=True
-			break
+	result["dotnet"]=QueryValueEx(
+		OpenKey(HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"),
+		'Release'
+	)[0] >= 533320 # .NET 4.8.1
+		# 4.6.2: 394802
 	# check webview
 	try:
 		result["webview_version"]=QueryValueEx(
@@ -56,51 +56,10 @@ def install_webview():
 	remove(path)
 	return code
 
-def install_dotnet_desktop():
-	resource = urlopen("https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.6/windowsdesktop-runtime-10.0.6-win-x64.exe")
-	path = join(getenv("TEMP"), "DotnetWindowsDesktopRuntime10.0.6.exe") # type: ignore
+def install_dotnet_runtime():
+	resource = urlopen("https://go.microsoft.com/fwlink/?linkid=2203305")
+	path = join(getenv("TEMP"), "DotneFramework4.8.1.exe") # type: ignore
 	with open(path, "wb") as file: file.write(resource.read())
-	code = run((path, "/quiet", "/norestart")).returncode
+	code = run(path, shell=True).returncode
 	remove(path)
 	return code
-
-def bundle_dotnet_runtime(minimal: bool = False):
-	from sys import modules
-	if "bsif_webview.webview" in modules:
-		print(f"bundle_dotnet_runtime() cannot work properly in current environment. Try using 'python -m bsif_webview_tool bundle_dotnet_runtime{' --minimal' if minimal else ''}'.")
-		return
-	runtime = None
-	runtime_list = DotNetRuntimeInfo.list()
-	for info in runtime_list:
-		if info.type == "Microsoft.WindowsDesktop.App" and info.version[0] >= 10:
-			runtime = info.location
-			break
-	if not runtime:
-		raise FileNotFoundError("Cannot find dotnet desktop runtime 10 or higher")
-	if exists(BUNDLED_DOTNET_RUNTIME):
-		rmtree(BUNDLED_DOTNET_RUNTIME)
-	if minimal:
-		mkdir(BUNDLED_DOTNET_RUNTIME)
-		for file in [
-			"D3DCompiler_47_cor3.dll",
-			"DirectWriteForwarder.dll",
-			"PresentationCore.dll",
-			"PresentationFramework.Classic.dll",
-			"PresentationFramework.dll",
-			"PresentationNative_cor3.dll",
-			"ReachFramework.dll",
-			"System.Configuration.ConfigurationManager.dll",
-			"System.IO.Packaging.dll",
-			"System.Printing.dll",
-			"System.Private.Windows.Core.dll",
-			"System.Windows.Extensions.dll",
-			"System.Windows.Primitives.dll",
-			"System.Xaml.dll",
-			"UIAutomationProvider.dll",
-			"UIAutomationTypes.dll",
-			"WindowsBase.dll",
-			"wpfgfx_cor3.dll"
-		]:
-			copyfile(join(runtime, file), join(BUNDLED_DOTNET_RUNTIME, file))
-	else:
-		copytree(runtime, BUNDLED_DOTNET_RUNTIME)

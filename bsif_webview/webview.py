@@ -1,4 +1,4 @@
-from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP, load_desktop_runtime_dll
+from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP
 
 if ARCHITECTURE not in PLATFORM_MAP:
 	raise RuntimeError("Unsupported platform.")

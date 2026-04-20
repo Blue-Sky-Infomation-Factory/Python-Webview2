@@ -23,6 +23,11 @@ class FilterItem(TypedDict, total = False):
 
 EXTENSION_REGEX = compile("[;'\"\\\\/:<>?]")
 description_of_all_files = "All Files"
+def set_description_of_all_files(text: str):
+	global description_of_all_files
+	if type(text) is not str:
+		raise TypeError("Argument 'text' must be a string.")
+	description_of_all_files = text
 
 def parse_filters(collection: CommonFileDialogFilterCollection, filters: Optional[Iterable[FilterItem]], exclude_filter_of_all_files: bool):
 	if filters:

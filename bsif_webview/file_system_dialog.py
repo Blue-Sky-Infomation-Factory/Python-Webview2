@@ -1,4 +1,4 @@
-from typing import Iterable, List, Optional, Tuple, TypedDict
+from typing import Iterable, List, Optional, Tuple, Type, TypedDict
 from re import compile
 from os.path import join
 from .helper import LIBRARIES
@@ -11,7 +11,7 @@ from System.Windows import Window # type: ignore
 from Microsoft.WindowsAPICodePack.Dialogs import CommonFileDialog, CommonFileDialogFilter, CommonFileDialogFilterCollection, CommonOpenFileDialog, CommonSaveFileDialog, CommonFileDialogResult # type: ignore
 
 class DialogBase[T: CommonFileDialog]:
-	def __init__(self, dialog_class: type[T]):
+	def __init__(self, dialog_class: Type[T]):
 		self._dialog = dialog_class()
 		self._selected = False
 	def show_dialog(self, owner: Window):

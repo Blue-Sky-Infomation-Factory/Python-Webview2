@@ -11,17 +11,33 @@
 		} = webview.hostObjects,
 		syncApi = Object.create(null),
 		asyncApi = Object.create(null);
-	function syncMethod(methodName, ...args) { return parse(syncCall(methodName, stringify(args))) }
-	async function asyncMethod(methodName, ...args) {
-		const result = await asyncCall(methodName, stringify(args));
-		if (!result) throw new TypeError("Failed to serialize result");
-		if (result.startsWith("#")) {
-			const data = parse(result.substring(1)),
-				error = new Error(data[1]);
-			error.name = data[0];
-			throw error;
+	function syncMethod(methodName, ...args) {
+		try {
+			return parse(syncCall(methodName, stringify(args)))
+		} catch (error) {
+			error = parse(error.message);
+			if (error) {
+				const newError = new Error(error[1]);
+				newError.name = error[0];
+				throw newError;
+			} else {
+				throw new Error("Webview bridge cannot handle the value that remote function returned.");
+			}
 		}
-		return parse(result)
+	}
+	async function asyncMethod(methodName, ...args) {
+		try {
+			return await asyncCall(methodName, stringify(args));
+		} catch (error) {
+			error = parse(error.message);
+			if (error) {
+				const newError = new Error(error[1]);
+				newError.name = error[0];
+				throw newError;
+			} else {
+				throw new Error("Webview bridge cannot handle the value that remote function returned.");
+			}
+		}
 	}
 	for (const name of methodNames) {
 		syncApi[name] = syncMethod.bind(null, name);

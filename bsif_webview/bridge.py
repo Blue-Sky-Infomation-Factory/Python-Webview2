@@ -12,6 +12,8 @@ AddReference(join(LIBRARIES, 'BSIF.WebView2Bridge.dll'))
 with open(join(PACKAGE, "bridge.js")) as file: bridge_script = file.read()
 from BSIF.WebView2Bridge import WebView2Bridge # type: ignore
 from System import Exception as CSException # type: ignore
+from System.Threading.Tasks import TaskCompletionSource # type: ignore
+from Microsoft.Web.WebView2.Core import CoreWebView2 # type: ignore
 
 def serialize_object(object: object): return object.__dict__
 
@@ -29,7 +31,7 @@ def pick_dictionary_methods(object: Dict[str, Any]) -> Dict[str, Callable]:
 		if ismethod(value) or isfunction(value) or isbuiltin(value): methods[key] = value
 	return methods
 
-def async_call_thread(function: Callable, args_json: str, async_object ):
+def async_call_thread(function: Callable, args_json: str, async_object: TaskCompletionSource ):
 	try:
 		result=function(*loads(args_json))
 		if (iscoroutine(result)): result=new_event_loop().run_until_complete(result)
@@ -43,8 +45,9 @@ def async_call_thread(function: Callable, args_json: str, async_object ):
 		print_exception(error)
 
 class Bridge:
-	def __init__(self, core, api: object):
+	def __init__(self, core: CoreWebView2, api: object):
 		api = self.__api = (pick_dictionary_methods if type(api) is dict else pick_methods)(api) # type: ignore
+		core.RemoveScriptToExecuteOnDocumentCreated("1")
 		core.AddScriptToExecuteOnDocumentCreatedAsync(bridge_script)
 		core.AddHostObjectToScript("bridge", WebView2Bridge(
 			WebView2Bridge.SyncCaller(self.__sync_call_handler),

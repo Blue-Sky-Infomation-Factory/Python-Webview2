@@ -1,5 +1,5 @@
-# Python-Webview2
-Microsoft Webview2 for python.
+# BSIF-Webview2
+BSIF-Webview2 is a application framework base on Microsoft Webview2 for python.
 
 For the usage, [see here](https://github.com/Blue-Sky-Infomation-Factory/Python-Webview2/wiki).
 

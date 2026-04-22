@@ -536,14 +536,13 @@ class WebViewWindow:
 			def next(task: CSTask[str]):
 				Thread(target=callback, args=(loads(task.Result),), daemon=True).start()
 			task.ContinueWith(_execute_javascript_delegate(next))
-		try:
-			context = get_running_loop()
-			future = context.create_future()
-			def next(task: CSTask[str]):
-				future.set_result(loads(task.Result))
-			task.ContinueWith(_execute_javascript_delegate(next))
-			return future
-		except: pass
+	def execute_javascript_await(self, script: str):
+		future = get_running_loop().create_future()
+		task = _cross_thread_call(self.__dispatcher, self.__execute_javascript, (script,))
+		def next(task: CSTask[str]):
+			future.set_result(loads(task.Result))
+		task.ContinueWith(_execute_javascript_delegate(next))
+		return future
 	def __on_javascript_message(self, _, args):
 		self.__message_notifier.trigger(loads(args.WebMessageAsJson))
 	@property

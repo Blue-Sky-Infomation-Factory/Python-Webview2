@@ -536,7 +536,6 @@ class WebViewWindow:
 			def next(task: CSTask[str]):
 				Thread(target=callback, args=(loads(task.Result),), daemon=True).start()
 			task.ContinueWith(_execute_javascript_delegate(next))
-			return
 		try:
 			context = get_running_loop()
 			future = context.create_future()

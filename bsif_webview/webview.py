@@ -3,7 +3,7 @@ from .helper import ARCHITECTURE, LIBRARIES, PLATFORM_MAP
 if ARCHITECTURE not in PLATFORM_MAP:
 	raise RuntimeError("Unsupported platform.")
 
-from asyncio import Future
+from asyncio import get_running_loop
 from enum import Enum
 from inspect import isfunction, ismethod
 from json import dumps, loads
@@ -11,7 +11,7 @@ from traceback import print_exception
 from clr import AddReference
 from os import getenv
 from os.path import join
-from threading import Lock, current_thread, main_thread
+from threading import Lock, Thread, current_thread, main_thread
 from typing import Any, Callable, Iterable, Literal, Optional, Self, Tuple, TypedDict, Unpack
 from weakref import WeakKeyDictionary
 from bsif_utils.notifier import Notifier
@@ -528,11 +528,23 @@ class WebViewWindow:
 	def __execute_javascript(self, script: str):
 		assert self.__webview.CoreWebView2
 		return self.__webview.CoreWebView2.ExecuteScriptAsync(script)
-	def execute_javascript(self, script: str):
+	def execute_javascript(self, script: str, callback: Optional[Callable[[Any], Any]] = None):
+		if callback is not None and not callable(callback):
+			raise ValueError("Argument 'callback' must be callable.")
 		task = _cross_thread_call(self.__dispatcher, self.__execute_javascript, (script,))
-		future = Future()
-		task.ContinueWith(_execute_javascript_delegate(lambda task: future.set_result(task.Result)))
-		return future
+		if callback:
+			def next(task: CSTask[str]):
+				Thread(target=callback, args=(loads(task.Result),), daemon=True).start()
+			task.ContinueWith(_execute_javascript_delegate(next))
+			return
+		try:
+			context = get_running_loop()
+			future = context.create_future()
+			def next(task: CSTask[str]):
+				future.set_result(loads(task.Result))
+			task.ContinueWith(_execute_javascript_delegate(next))
+			return future
+		except: pass
 	def __on_javascript_message(self, _, args):
 		self.__message_notifier.trigger(loads(args.WebMessageAsJson))
 	@property

@@ -35,6 +35,7 @@ def delay_test():
 	assert window
 	window.post_message("hello world")
 	window.message_notifier.add_handler(lambda x: print(type(x)))
+	window.execute_javascript(r"throw new Error('Test error')", print)
 	# app.stop()
 
 # def async_agent(method, args = (), kargs = {}):

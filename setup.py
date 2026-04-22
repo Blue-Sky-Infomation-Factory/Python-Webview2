@@ -21,7 +21,7 @@ readme = "\n".join(lines)
 
 setup(
 	name="bsif-webview2",
-	version="2.0.1",
+	version="2.0.2",
 	author="Blue Sky Infomation Factory",
 	description="Microsoft Webview2 for python.",
 	long_description=readme,
